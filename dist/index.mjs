@@ -1,5 +1,7 @@
 import fs from 'fs';
 import { promisify } from 'util';
+import pqueue from 'pqueue';
+import trigger from 'trigger';
 
 class DatastoreError extends Error {
   constructor (message) {
@@ -109,10 +111,6 @@ class UniqueIndex extends Index {
   }
 }
 
-function n(){var e,n,r=new Promise(function(r,t){e=r,n=t;});return r.fire=e,r.cancel=n,r}
-
-function pqueue(t){void 0===t&&(t=1);var e=[],r=0,i=n();return i.fire(),{push:function(t){return new Promise(function(f,c){e.push(function(){0==r++&&(i=n());try{Promise.resolve(t()).then(function(n){f(n),u();},function(n){c(n),u();});}catch(n){c(n),u();}}),o();})},get running(){return r},get pending(){return e.length},get idle(){return i}};function u(){r--,o();}function o(){r>=t||(e.length||r||i.fire(),e.length&&e.shift()());}}
-
 const readFile = promisify(fs.readFile);
 const appendFile = promisify(fs.appendFile);
 const openFile = promisify(fs.open);
@@ -136,7 +134,7 @@ class Datastore {
     this.indexes = {
       _id: Index.create({ fieldName: '_id', unique: true })
     };
-    this._loaded = n();
+    this._loaded = trigger();
     this._queue = pqueue();
     this._queue.push(() => this._loaded);
     this.loaded = false;
