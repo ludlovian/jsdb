@@ -44,6 +44,12 @@ function getRandomString (n) {
 function getRandomId () {
   return `${getRandomString(6)}-${getRandomString(6)}`
 }
+function cleanObject (obj) {
+  return Object.entries(obj).reduce((o, [k, v]) => {
+    if (v !== undefined) o[k] = v;
+    return o
+  }, {})
+}
 
 class Index {
   static create (options) {
@@ -156,23 +162,25 @@ class Datastore {
     return this._execute(() => this._getAll())
   }
   async insert (doc) {
-    if (doc._id == null) doc._id = getRandomId();
-    return this._execute(() => {
-      this._upsertDoc(doc);
-      return this._append(doc)
+    return this._execute(async () => {
+      doc = this._upsertDoc(doc);
+      await this._append(doc);
+      return doc
     })
   }
   async update (doc) {
     return this._execute(async () => {
-      doc = await this._upsertDoc(doc, { mustExist: true });
-      return this._append(doc)
+      doc = this._upsertDoc(doc, { mustExist: true });
+      await this._append(doc);
+      return doc
     })
   }
   async delete (doc) {
     const { deleted } = this.options.special;
     return this._execute(async () => {
-      doc = await this._deleteDoc(doc);
-      return this._append({ [deleted]: doc })
+      doc = this._deleteDoc(doc);
+      await this._append({ [deleted]: doc });
+      return doc
     })
   }
   async ensureIndex (options) {
@@ -243,9 +251,11 @@ class Datastore {
     delete this.indexes[fieldName];
   }
   _upsertDoc (doc, { mustExist = false } = {}) {
-    const ixs = Object.values(this.indexes);
     const olddoc = this.indexes._id._data.get(doc._id);
     if (!olddoc && mustExist) throw new NotExists(doc)
+    doc = cleanObject(doc);
+    if (doc._id == null) doc._id = getRandomId();
+    const ixs = Object.values(this.indexes);
     try {
       ixs.forEach(ix => {
         if (olddoc) ix._deleteDoc(olddoc);

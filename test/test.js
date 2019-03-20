@@ -35,7 +35,7 @@ test('basic', async t => {
     autoload: true
   })
   await db.load()
-  await db.insert({ _id: 1, foo: 'bar' })
+  await db.insert({ _id: 1, foo: 'bar', ignoreThis: undefined })
   await db.ensureIndex({ fieldName: 'foo', sparse: true })
   const file = await readFile(t.context.file, 'utf8')
   t.snapshot(file)

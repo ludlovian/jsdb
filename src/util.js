@@ -18,3 +18,10 @@ function getRandomString (n) {
 export function getRandomId () {
   return `${getRandomString(6)}-${getRandomString(6)}`
 }
+
+export function cleanObject (obj) {
+  return Object.entries(obj).reduce((o, [k, v]) => {
+    if (v !== undefined) o[k] = v
+    return o
+  }, {})
+}
