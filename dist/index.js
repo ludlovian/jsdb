@@ -254,7 +254,7 @@ class Datastore {
     const olddoc = this.indexes._id._data.get(doc._id);
     if (!olddoc && mustExist) throw new NotExists(doc)
     doc = cleanObject(doc);
-    if (doc._id == null) doc._id = getRandomId();
+    if (doc._id == null) doc = { _id: getRandomId(), ...doc };
     const ixs = Object.values(this.indexes);
     try {
       ixs.forEach(ix => {
