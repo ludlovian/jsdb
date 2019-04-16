@@ -22,9 +22,10 @@ Only for my own use. Don't use it. Use nedb instead
 `db = new Datastore(filename | options)`
 
 Where options are
-`.filename` - the filename
-`.autoload` - autload it
-`.autocompact` - auto compaction interval
+
+- `filename` - the filename
+- `autoload` - autoload it
+- `autocompact` - auto compaction interval
 
 ### .load
 
