@@ -4,27 +4,31 @@ import { KeyViolation } from './errors'
 import { delve } from './util'
 
 export default class Index {
-  static create (options) {
-    return options.unique ? new UniqueIndex(options) : new Index(options)
+  static create (datastore, options) {
+    return options.unique
+      ? new UniqueIndex(datastore, options)
+      : new Index(datastore, options)
   }
 
-  constructor (options) {
+  constructor (datastore, options) {
+    this._execute = datastore._execute.bind(datastore)
     this.options = options
     this._data = new Map()
   }
 
   find (value) {
-    const list = this._data.get(value)
-    return Promise.resolve(list || [])
+    return this._execute(() => this._data.get(value) || [])
   }
 
   findOne (value) {
-    const list = this._data.get(value)
-    return Promise.resolve(list ? list[0] : undefined)
+    return this._execute(() => {
+      const list = this._data.get(value)
+      return list ? list[0] : undefined
+    })
   }
 
   getAll () {
-    return Promise.resolve(Array.from(this._data.entries()))
+    return this._execute(() => Array.from(this._data.entries()))
   }
 
   // INTERNAL API
@@ -34,7 +38,7 @@ export default class Index {
       list = []
       this._data.set(key, list)
     }
-    if (list.indexOf(doc) === -1) list.push(doc)
+    if (!list.includes(doc)) list.push(doc)
   }
 
   _removeLink (key, doc) {
@@ -67,11 +71,11 @@ export default class Index {
 
 class UniqueIndex extends Index {
   find (value) {
-    return Promise.resolve(this._data.get(value))
+    return this.findOne(value)
   }
 
   findOne (value) {
-    return Promise.resolve(this._data.get(value))
+    return this._execute(() => this._data.get(value))
   }
 
   _addLink (key, doc) {

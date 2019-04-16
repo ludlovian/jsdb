@@ -3,7 +3,7 @@ import cleanup from 'rollup-plugin-cleanup'
 
 export default {
   input: 'src/index.js',
-  external: [ 'fs', 'util', 'trigger', 'pqueue' ],
+  external: [ 'fs', 'util', 'plock' ],
   plugins: [
     cleanup(),
     process.env.NODE_ENV === 'production' && terser()
@@ -12,12 +12,12 @@ export default {
     {
       file: 'dist/index.js',
       format: 'cjs',
-      sourcemap: true,
+      sourcemap: false,
     },
     {
       file: 'dist/index.mjs',
       format: 'esm',
-      sourcemap: true
+      sourcemap: false
     }
   ]
 }

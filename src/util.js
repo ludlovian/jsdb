@@ -11,7 +11,7 @@ export function delve (obj, key) {
 
 function getRandomString (n) {
   return Math.random()
-    .toString(16)
+    .toString(36)
     .slice(2, 2 + n)
 }
 
@@ -24,4 +24,20 @@ export function cleanObject (obj) {
     if (v !== undefined) o[k] = v
     return o
   }, {})
+}
+
+const DATE_SENTINEL = '$jsdb$date$'
+
+export function stringify (obj) {
+  return JSON.stringify(obj, function (k, v) {
+    return this[k] instanceof Date ? { [DATE_SENTINEL]: this[k].getTime() } : v
+  })
+}
+
+export function parse (s) {
+  return JSON.parse(s, function (k, v) {
+    if (k === DATE_SENTINEL) return new Date(v)
+    if (typeof v === 'object' && DATE_SENTINEL in v) return v[DATE_SENTINEL]
+    return v
+  })
 }

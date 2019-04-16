@@ -3,23 +3,24 @@ import test from 'ava'
 import Datastore from '../src'
 import fs from 'fs'
 import { promisify } from 'util'
+import { execSync } from 'child_process'
 
 const readFile = promisify(fs.readFile)
 
 const DIR = './assets~'
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 
-test.before(async t => {
-  await promisify(fs.mkdir)(DIR)
+test.before(t => {
+  execSync(`rm -rf ${DIR};mkdir ${DIR}`)
 })
 
-test.after(async t => {
-  await promisify(fs.rmdir)(DIR)
+test.after(t => {
+  execSync(`rm -rf ${DIR}`)
 })
 
 test.beforeEach(t => {
   t.context.file = `${DIR}/test-${Math.random()
-    .toString(16)
+    .toString(36)
     .slice(2, 10)}.db`
 })
 
@@ -41,15 +42,29 @@ test('basic', async t => {
   t.snapshot(file)
 })
 
+test('delayed load', async t => {
+  const db = new Datastore({
+    filename: t.context.file
+  })
+  db.insert({ _id: 1, foo: 'bar', ignoreThis: undefined })
+  db.ensureIndex({ fieldName: 'foo', sparse: true })
+  db.load()
+  await db.getAll()
+  const file = await readFile(t.context.file, 'utf8')
+  t.snapshot(file)
+})
+
 test('full activity', async t => {
   let db = new Datastore(t.context.file)
+  let date = new Date(2018, 0, 19, 12, 34, 56)
   await db.load()
-  await db.insert({ _id: 1, foo: 'bar' })
+  await db.insert({ _id: 1, foo: 'bar', date })
   let r
   r = await db.indexes._id.find(1)
   t.is(r.foo, 'bar')
   r = await db.indexes._id.findOne(1)
   t.is(r.foo, 'bar')
+  t.is(r.date, date)
 
   await db.ensureIndex({ fieldName: 'foo', sparse: true })
   await db.ensureIndex({ fieldName: 'foo', sparse: true })
@@ -128,11 +143,13 @@ test('errors', async t => {
 })
 
 test('auto compaction', async t => {
-  const db = new Datastore(t.context.file)
+  let db = new Datastore({
+    filename: t.context.file,
+    autocompact: 500
+  })
   await db.load()
   await db.insert({ _id: 1 })
   await db.update({ _id: 1, foo: 'bar' })
-  db.setAutoCompaction(500)
   await delay(750)
   db.stopAutoCompaction()
 

@@ -24,12 +24,13 @@ Only for my own use. Don't use it. Use nedb instead
 Where options are
 `.filename` - the filename
 `.autoload` - autload it
+`.autocompact` - auto compaction interval
 
 ### .load
 
 `await db.load()`
 
-Reads the file into memory and prepares indexes. All other IO is queued until this completes. (That sentence is *almost* true)
+Reads the file into memory and prepares indexes. All other IO is queued until this completes.
 
 ### .ensureIndex
 
@@ -50,25 +51,42 @@ removes the index
 
 `await db.insert(doc)`
 
-Inserts a new doc. Updates in place to have `_id` if not given.
+Inserts a new doc. Returns the actual stored doc with `_id` if not given.
 
 ### .update
 
 `await db.update(updatedDoc)`
 
-Replaces existing doc (based on `_id`) with this new one
+Replaces existing doc (based on `_id`) with this new one. Returns the new stored one.
 
 ### .delete
 
 `await db.delete(doc)`
 
-Deletes the doc whose `_id` matches this one
+Deletes the doc whose `_id` matches this one. Returns the old stored doc.
 
 ### .getAll
 
 `allDocs = await db.getAll()`
 
 returns an array of all docs.
+
+### .compact
+
+`await db.compact()`
+comapcts and rewrites the database.
+
+### .setAutoCompaction
+
+`db.setAutoCompaction(30 * 60 * 1000) // 30 minutes`
+
+Sets auto-scheduled compaction
+
+### .stopAutoCompaction
+
+`db.stopAutoCompaction()`
+
+Stops any scheduled compaction
 
 ### Index.find
 

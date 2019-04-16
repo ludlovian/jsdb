@@ -3,10 +3,10 @@
 import fs from 'fs'
 import { promisify } from 'util'
 import Index from './indexes'
-import pqueue from 'pqueue'
-import trigger from 'trigger'
+import PLock from 'plock'
+
 import { NotExists } from './errors'
-import { getRandomId, cleanObject } from './util'
+import { getRandomId, cleanObject, parse, stringify } from './util'
 
 const readFile = promisify(fs.readFile)
 const appendFile = promisify(fs.appendFile)
@@ -20,8 +20,8 @@ export default class Datastore {
   constructor (options) {
     if (typeof options === 'string') options = { filename: options }
     this.options = {
-      serialize: JSON.stringify,
-      deserialize: JSON.parse,
+      serialize: stringify,
+      deserialize: parse,
       special: {
         deleted: '$$deleted',
         addIndex: '$$addIndex',
@@ -29,21 +29,30 @@ export default class Datastore {
       },
       ...options
     }
-    this.indexes = {
-      _id: Index.create({ fieldName: '_id', unique: true })
-    }
-    this._loaded = trigger()
-    this._queue = pqueue()
-    this._queue.push(() => this._loaded)
     this.loaded = false
+    // start with lock locked, to queue up DB actions
+    this._lock = new PLock()
+    this._lock.lock()
+    this._empty()
     if (options.autoload) this.load()
+    if (options.autocompact) this.setAutoCompaction(options.autocompact)
   }
 
   async load () {
     // if loading/loaded already, return the loaded promise
-    if (this.loaded) return this._loaded
-    await this._hydrate()
-    return this.compact()
+    if (this._loaded) return this._loaded
+
+    this._loaded = this._hydrate()
+      // release the lock to allow queued DB access
+      .then(() => this._lock.release())
+      // queue a compaction
+      .then(() => this.compact())
+      // everything now loaded
+      .then(() => {
+        this.loaded = true
+      })
+
+    return this._loaded
   }
 
   compact () {
@@ -112,37 +121,37 @@ export default class Datastore {
   // PRIVATE API
 
   _execute (fn) {
-    return this._queue.push(fn)
+    return this._lock.exec(fn)
   }
 
-  _hydrate () {
-    this.loaded = true
+  _empty () {
+    this.indexes = {
+      _id: Index.create(this, { fieldName: '_id', unique: true })
+    }
+  }
 
+  async _hydrate () {
     const {
       filename,
       deserialize,
       special: { deleted, addIndex, deleteIndex }
     } = this.options
 
-    return (
-      readFile(filename, { encoding: 'utf8', flag: 'a+' })
-        .then(data => {
-          for (const line of data.split(/\n/).filter(Boolean)) {
-            let doc = deserialize(line)
-            if (addIndex in doc) {
-              this._addIndex(doc[addIndex])
-            } else if (deleteIndex in doc) {
-              this._deleteIndex(doc[deleteIndex].fieldName)
-            } else if (deleted in doc) {
-              this._deleteDoc(doc[deleted])
-            } else {
-              this._upsertDoc(doc)
-            }
-          }
-        })
-        // fire the loaded trigger, releasing any DB requests
-        .then(() => this._loaded.fire())
-    )
+    const data = await readFile(filename, { encoding: 'utf8', flag: 'a+' })
+
+    this._empty()
+    for (const line of data.split(/\n/).filter(Boolean)) {
+      let doc = deserialize(line)
+      if (addIndex in doc) {
+        this._addIndex(doc[addIndex])
+      } else if (deleteIndex in doc) {
+        this._deleteIndex(doc[deleteIndex].fieldName)
+      } else if (deleted in doc) {
+        this._deleteDoc(doc[deleted])
+      } else {
+        this._upsertDoc(doc)
+      }
+    }
   }
 
   _getAll () {
@@ -151,7 +160,7 @@ export default class Datastore {
 
   _addIndex (options) {
     const { fieldName } = options
-    const ix = Index.create(options)
+    const ix = Index.create(this, options)
     this._getAll().forEach(doc => ix._insertDoc(doc))
     this.indexes[fieldName] = ix
   }

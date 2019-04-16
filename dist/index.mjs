@@ -1,7 +1,6 @@
 import fs from 'fs';
 import { promisify } from 'util';
-import pqueue from 'pqueue';
-import trigger from 'trigger';
+import PLock from 'plock';
 
 class DatastoreError extends Error {
   constructor (message) {
@@ -34,7 +33,7 @@ function delve (obj, key) {
 }
 function getRandomString (n) {
   return Math.random()
-    .toString(16)
+    .toString(36)
     .slice(2, 2 + n)
 }
 function getRandomId () {
@@ -46,25 +45,42 @@ function cleanObject (obj) {
     return o
   }, {})
 }
+const DATE_SENTINEL = '$jsdb$date$';
+function stringify (obj) {
+  return JSON.stringify(obj, function (k, v) {
+    return this[k] instanceof Date ? { [DATE_SENTINEL]: this[k].getTime() } : v
+  })
+}
+function parse (s) {
+  return JSON.parse(s, function (k, v) {
+    if (k === DATE_SENTINEL) return new Date(v)
+    if (typeof v === 'object' && DATE_SENTINEL in v) return v[DATE_SENTINEL]
+    return v
+  })
+}
 
 class Index {
-  static create (options) {
-    return options.unique ? new UniqueIndex(options) : new Index(options)
+  static create (datastore, options) {
+    return options.unique
+      ? new UniqueIndex(datastore, options)
+      : new Index(datastore, options)
   }
-  constructor (options) {
+  constructor (datastore, options) {
+    this._execute = datastore._execute.bind(datastore);
     this.options = options;
     this._data = new Map();
   }
   find (value) {
-    const list = this._data.get(value);
-    return Promise.resolve(list || [])
+    return this._execute(() => this._data.get(value) || [])
   }
   findOne (value) {
-    const list = this._data.get(value);
-    return Promise.resolve(list ? list[0] : undefined)
+    return this._execute(() => {
+      const list = this._data.get(value);
+      return list ? list[0] : undefined
+    })
   }
   getAll () {
-    return Promise.resolve(Array.from(this._data.entries()))
+    return this._execute(() => Array.from(this._data.entries()))
   }
   _addLink (key, doc) {
     let list = this._data.get(key);
@@ -72,7 +88,7 @@ class Index {
       list = [];
       this._data.set(key, list);
     }
-    if (list.indexOf(doc) === -1) list.push(doc);
+    if (!list.includes(doc)) list.push(doc);
   }
   _removeLink (key, doc) {
     const list = this._data.get(key) || [];
@@ -101,10 +117,10 @@ class Index {
 }
 class UniqueIndex extends Index {
   find (value) {
-    return Promise.resolve(this._data.get(value))
+    return this.findOne(value)
   }
   findOne (value) {
-    return Promise.resolve(this._data.get(value))
+    return this._execute(() => this._data.get(value))
   }
   _addLink (key, doc) {
     if (this._data.has(key)) {
@@ -128,8 +144,8 @@ class Datastore {
   constructor (options) {
     if (typeof options === 'string') options = { filename: options };
     this.options = {
-      serialize: JSON.stringify,
-      deserialize: JSON.parse,
+      serialize: stringify,
+      deserialize: parse,
       special: {
         deleted: '$$deleted',
         addIndex: '$$addIndex',
@@ -137,19 +153,22 @@ class Datastore {
       },
       ...options
     };
-    this.indexes = {
-      _id: Index.create({ fieldName: '_id', unique: true })
-    };
-    this._loaded = trigger();
-    this._queue = pqueue();
-    this._queue.push(() => this._loaded);
     this.loaded = false;
+    this._lock = new PLock();
+    this._lock.lock();
+    this._empty();
     if (options.autoload) this.load();
+    if (options.autocompact) this.setAutoCompaction(options.autocompact);
   }
   async load () {
-    if (this.loaded) return this._loaded
-    await this._hydrate();
-    return this.compact()
+    if (this._loaded) return this._loaded
+    this._loaded = this._hydrate()
+      .then(() => this._lock.release())
+      .then(() => this.compact())
+      .then(() => {
+        this.loaded = true;
+      });
+    return this._loaded
   }
   compact () {
     return this._execute(() => this._rewrite())
@@ -206,40 +225,40 @@ class Datastore {
     this.autoCompaction = undefined;
   }
   _execute (fn) {
-    return this._queue.push(fn)
+    return this._lock.exec(fn)
   }
-  _hydrate () {
-    this.loaded = true;
+  _empty () {
+    this.indexes = {
+      _id: Index.create(this, { fieldName: '_id', unique: true })
+    };
+  }
+  async _hydrate () {
     const {
       filename,
       deserialize,
       special: { deleted, addIndex, deleteIndex }
     } = this.options;
-    return (
-      readFile(filename, { encoding: 'utf8', flag: 'a+' })
-        .then(data => {
-          for (const line of data.split(/\n/).filter(Boolean)) {
-            let doc = deserialize(line);
-            if (addIndex in doc) {
-              this._addIndex(doc[addIndex]);
-            } else if (deleteIndex in doc) {
-              this._deleteIndex(doc[deleteIndex].fieldName);
-            } else if (deleted in doc) {
-              this._deleteDoc(doc[deleted]);
-            } else {
-              this._upsertDoc(doc);
-            }
-          }
-        })
-        .then(() => this._loaded.fire())
-    )
+    const data = await readFile(filename, { encoding: 'utf8', flag: 'a+' });
+    this._empty();
+    for (const line of data.split(/\n/).filter(Boolean)) {
+      let doc = deserialize(line);
+      if (addIndex in doc) {
+        this._addIndex(doc[addIndex]);
+      } else if (deleteIndex in doc) {
+        this._deleteIndex(doc[deleteIndex].fieldName);
+      } else if (deleted in doc) {
+        this._deleteDoc(doc[deleted]);
+      } else {
+        this._upsertDoc(doc);
+      }
+    }
   }
   _getAll () {
     return Array.from(this.indexes._id._data.values())
   }
   _addIndex (options) {
     const { fieldName } = options;
-    const ix = Index.create(options);
+    const ix = Index.create(this, options);
     this._getAll().forEach(doc => ix._insertDoc(doc));
     this.indexes[fieldName] = ix;
   }
@@ -305,4 +324,3 @@ class Datastore {
 Object.assign(Datastore, { KeyViolation, NotExists });
 
 export default Datastore;
-//# sourceMappingURL=index.mjs.map
