@@ -134,6 +134,9 @@ test('errors', async t => {
   await t.throwsAsync(() => db.delete({ _id: 1 }))
   await t.throwsAsync(() => db.update({ _id: 1 }))
 
+  await db.insert({ _id: 'foo', bar: 'baz' })
+  await t.throwsAsync(() => db.insert({ _id: 'foo', bar: 'baz' }))
+
   await db.ensureIndex({ fieldName: 'foo', unique: true })
   await db.insert({ _id: 1, foo: 'bar' })
   await t.throwsAsync(() => db.insert({ _id: 2, foo: 'bar' }))

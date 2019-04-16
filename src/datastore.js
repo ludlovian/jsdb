@@ -5,7 +5,7 @@ import { promisify } from 'util'
 import Index from './indexes'
 import PLock from 'plock'
 
-import { NotExists } from './errors'
+import { NotExists, KeyViolation } from './errors'
 import { getRandomId, cleanObject, parse, stringify } from './util'
 
 const readFile = promisify(fs.readFile)
@@ -65,7 +65,7 @@ export default class Datastore {
 
   async insert (doc) {
     return this._execute(async () => {
-      doc = this._upsertDoc(doc)
+      doc = this._upsertDoc(doc, { mustNotExist: true })
       await this._append(doc)
       return doc
     })
@@ -169,9 +169,10 @@ export default class Datastore {
     delete this.indexes[fieldName]
   }
 
-  _upsertDoc (doc, { mustExist = false } = {}) {
+  _upsertDoc (doc, { mustExist = false, mustNotExist = false } = {}) {
     const olddoc = this.indexes._id._data.get(doc._id)
     if (!olddoc && mustExist) throw new NotExists(doc)
+    if (olddoc && mustNotExist) throw new KeyViolation(doc, '_id')
     doc = cleanObject(doc)
     if (doc._id == null) doc = { _id: getRandomId(), ...doc }
     const ixs = Object.values(this.indexes)
