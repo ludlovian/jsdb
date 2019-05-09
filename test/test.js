@@ -3,19 +3,20 @@ import test from 'ava'
 import Datastore from '../src'
 import fs from 'fs'
 import { promisify } from 'util'
-import { execSync } from 'child_process'
+import { exec as _exec } from 'child_process'
 
+const exec = promisify(_exec)
 const readFile = promisify(fs.readFile)
 
 const DIR = './assets~'
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 
-test.before(t => {
-  execSync(`rm -rf ${DIR};mkdir ${DIR}`)
+test.before(async t => {
+  await exec(`rm -rf ${DIR};mkdir ${DIR}`)
 })
 
-test.after(t => {
-  execSync(`rm -rf ${DIR}`)
+test.after(async t => {
+  await exec(`rm -rf ${DIR}`)
 })
 
 test.beforeEach(t => {
@@ -100,6 +101,19 @@ test('full activity', async t => {
   await db.insert({ noId: true })
   t.is((await db.getAll()).length, 2)
   t.is((await db.indexes._id.getAll()).length, 2)
+})
+
+test('reload', async t => {
+  const db = new Datastore(t.context.file)
+  await db.load()
+  await db.insert({ _id: 1, foo: 'bar' })
+
+  t.is((await db.getAll()).length, 1)
+
+  await promisify(fs.writeFile)(t.context.file, '')
+  await db.reload()
+
+  t.is((await db.getAll()).length, 0)
 })
 
 test('empty data', async t => {

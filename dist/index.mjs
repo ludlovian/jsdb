@@ -170,6 +170,9 @@ class Datastore {
       });
     return this._loaded
   }
+  reload () {
+    return this._execute(() => this._hydrate())
+  }
   compact () {
     return this._execute(() => this._rewrite())
   }
