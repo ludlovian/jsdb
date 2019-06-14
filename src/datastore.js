@@ -6,7 +6,7 @@ import Index from './indexes'
 import PLock from 'plock'
 
 import { NotExists, KeyViolation } from './errors'
-import { getRandomId, cleanObject, parse, stringify } from './util'
+import { getId, cleanObject, parse, stringify } from './util'
 
 const readFile = promisify(fs.readFile)
 const appendFile = promisify(fs.appendFile)
@@ -178,7 +178,10 @@ export default class Datastore {
     if (!olddoc && mustExist) throw new NotExists(doc)
     if (olddoc && mustNotExist) throw new KeyViolation(doc, '_id')
     doc = cleanObject(doc)
-    if (doc._id == null) doc = { _id: getRandomId(), ...doc }
+    if (doc._id == null) {
+      const _id = getId(doc, this.indexes._id._data)
+      doc = { _id, ...doc }
+    }
     const ixs = Object.values(this.indexes)
     try {
       ixs.forEach(ix => {

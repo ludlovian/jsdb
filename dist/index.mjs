@@ -31,13 +31,19 @@ function delve (obj, key) {
   }
   return obj === undefined || p < key.length ? undefined : obj
 }
-function getRandomString (n) {
-  return Math.random()
-    .toString(36)
-    .slice(2, 2 + n)
+function getId (row, existing) {
+  const start = hashString(stringify(row));
+  for (let n = 0; n < 1e8; n++) {
+    const id = ((start + n) & 0x7fffffff).toString(36);
+    if (!existing.has(id)) return id
+  }
+  throw new Error('Could not generate unique id')
 }
-function getRandomId () {
-  return `${getRandomString(6)}-${getRandomString(6)}`
+function hashString (string) {
+  return Array.from(string).reduce(
+    (h, ch) => ((h << 5) - h + ch.charCodeAt(0)) & 0xffffffff,
+    0
+  )
 }
 function cleanObject (obj) {
   return Object.entries(obj).reduce((o, [k, v]) => {
@@ -273,7 +279,10 @@ class Datastore {
     if (!olddoc && mustExist) throw new NotExists(doc)
     if (olddoc && mustNotExist) throw new KeyViolation(doc, '_id')
     doc = cleanObject(doc);
-    if (doc._id == null) doc = { _id: getRandomId(), ...doc };
+    if (doc._id == null) {
+      const _id = getId(doc, this.indexes._id._data);
+      doc = { _id, ...doc };
+    }
     const ixs = Object.values(this.indexes);
     try {
       ixs.forEach(ix => {

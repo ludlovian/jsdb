@@ -103,6 +103,21 @@ test('full activity', async t => {
   t.is((await db.indexes._id.getAll()).length, 2)
 })
 
+test('generated id', async t => {
+  const db = new Datastore({
+    filename: t.context.file,
+    autoload: true
+  })
+  await db.load()
+  await db.insert({ foo: 'bar' })
+  t.snapshot(await readFile(t.context.file, 'utf8'))
+
+  await db.insert({ foo: 'bar' })
+  t.snapshot(await readFile(t.context.file, 'utf8'))
+
+  t.is((await db.getAll()).length, 2)
+})
+
 test('reload', async t => {
   const db = new Datastore(t.context.file)
   await db.load()

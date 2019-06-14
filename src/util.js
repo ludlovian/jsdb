@@ -9,14 +9,22 @@ export function delve (obj, key) {
   return obj === undefined || p < key.length ? undefined : obj
 }
 
-function getRandomString (n) {
-  return Math.random()
-    .toString(36)
-    .slice(2, 2 + n)
+export function getId (row, existing) {
+  // generate a repeatable for this row, avoiding conflicts with the other rows
+  const start = hashString(stringify(row))
+  for (let n = 0; n < 1e8; n++) {
+    const id = ((start + n) & 0x7fffffff).toString(36)
+    if (!existing.has(id)) return id
+  }
+  // istanbul ignore next
+  throw new Error('Could not generate unique id')
 }
 
-export function getRandomId () {
-  return `${getRandomString(6)}-${getRandomString(6)}`
+function hashString (string) {
+  return Array.from(string).reduce(
+    (h, ch) => ((h << 5) - h + ch.charCodeAt(0)) & 0xffffffff,
+    0
+  )
 }
 
 export function cleanObject (obj) {
