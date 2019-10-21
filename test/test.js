@@ -57,7 +57,7 @@ test('delayed load', async t => {
 
 test('full activity', async t => {
   let db = new Datastore(t.context.file)
-  let date = new Date(2018, 0, 19, 12, 34, 56)
+  const date = new Date(2018, 0, 19, 12, 34, 56)
   await db.load()
   await db.insert({ _id: 1, foo: 'bar', date })
   let r
@@ -88,7 +88,7 @@ test('full activity', async t => {
   await db.deleteIndex('foo')
   await db.deleteIndex('_id')
 
-  let file = await readFile(t.context.file, 'utf8')
+  const file = await readFile(t.context.file, 'utf8')
   t.snapshot(file)
 
   db = new Datastore(t.context.file)
@@ -175,7 +175,7 @@ test('errors', async t => {
 })
 
 test('auto compaction', async t => {
-  let db = new Datastore({
+  const db = new Datastore({
     filename: t.context.file,
     autocompact: 500
   })
@@ -185,6 +185,6 @@ test('auto compaction', async t => {
   await delay(750)
   db.stopAutoCompaction()
 
-  let file = await readFile(t.context.file, 'utf8')
+  const file = await readFile(t.context.file, 'utf8')
   t.snapshot(file)
 })

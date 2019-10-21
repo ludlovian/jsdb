@@ -104,7 +104,7 @@ class Index {
     if (!list.length) this._data.delete(key);
   }
   _insertDoc (doc) {
-    let key = delve(doc, this.options.fieldName);
+    const key = delve(doc, this.options.fieldName);
     if (key == null && this.options.sparse) return
     if (Array.isArray(key)) {
       key.forEach(key => this._addLink(key, doc));
@@ -113,7 +113,7 @@ class Index {
     }
   }
   _deleteDoc (doc) {
-    let key = delve(doc, this.options.fieldName);
+    const key = delve(doc, this.options.fieldName);
     if (Array.isArray(key)) {
       key.forEach(key => this._removeLink(key, doc));
     } else {
@@ -250,7 +250,7 @@ class Datastore {
     const data = await readFile(filename, { encoding: 'utf8', flag: 'a+' });
     this._empty();
     for (const line of data.split(/\n/).filter(Boolean)) {
-      let doc = deserialize(line);
+      const doc = deserialize(line);
       if (addIndex in doc) {
         this._addIndex(doc[addIndex]);
       } else if (deleteIndex in doc) {

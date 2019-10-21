@@ -50,7 +50,7 @@ export default class Index {
   }
 
   _insertDoc (doc) {
-    let key = delve(doc, this.options.fieldName)
+    const key = delve(doc, this.options.fieldName)
     if (key == null && this.options.sparse) return
     if (Array.isArray(key)) {
       key.forEach(key => this._addLink(key, doc))
@@ -60,7 +60,7 @@ export default class Index {
   }
 
   _deleteDoc (doc) {
-    let key = delve(doc, this.options.fieldName)
+    const key = delve(doc, this.options.fieldName)
     if (Array.isArray(key)) {
       key.forEach(key => this._removeLink(key, doc))
     } else {

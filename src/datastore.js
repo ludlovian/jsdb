@@ -145,7 +145,7 @@ export default class Datastore {
 
     this._empty()
     for (const line of data.split(/\n/).filter(Boolean)) {
-      let doc = deserialize(line)
+      const doc = deserialize(line)
       if (addIndex in doc) {
         this._addIndex(doc[addIndex])
       } else if (deleteIndex in doc) {
