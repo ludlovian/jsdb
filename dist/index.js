@@ -4,7 +4,6 @@ function _interopDefault (ex) { return (ex && (typeof ex === 'object') && 'defau
 
 var fs = _interopDefault(require('fs'));
 var util = require('util');
-var PLock = _interopDefault(require('plock'));
 
 class DatastoreError extends Error {
   constructor (message) {
@@ -143,6 +142,32 @@ class UniqueIndex extends Index {
   }
 }
 
+class Queue {
+  constructor (start) {
+    this._resetReadyFlag();
+    this._head = this._ready;
+    if (start) this.start();
+  }
+  add (fn) {
+    const waitForReady = () => this._ready;
+    const prom = this._head.then(fn);
+    this._head = prom.then(waitForReady, waitForReady);
+    return prom
+  }
+  stop () {
+    return this.add(() => this._resetReadyFlag())
+  }
+  _resetReadyFlag () {
+    this.started = false;
+    this._ready = new Promise(resolve => {
+      this.start = () => {
+        this.started = true;
+        resolve();
+      };
+    });
+  }
+}
+
 const readFile = util.promisify(fs.readFile);
 const appendFile = util.promisify(fs.appendFile);
 const openFile = util.promisify(fs.open);
@@ -164,8 +189,7 @@ class Datastore {
       ...options
     };
     this.loaded = false;
-    this._lock = new PLock();
-    this._lock.lock();
+    this._queue = new Queue();
     this._empty();
     if (options.autoload) this.load();
     if (options.autocompact) this.setAutoCompaction(options.autocompact);
@@ -173,7 +197,7 @@ class Datastore {
   async load () {
     if (this._loaded) return this._loaded
     this._loaded = this._hydrate()
-      .then(() => this._lock.release())
+      .then(() => this._queue.start())
       .then(() => this.compact())
       .then(() => {
         this.loaded = true;
@@ -238,7 +262,7 @@ class Datastore {
     this.autoCompaction = undefined;
   }
   _execute (fn) {
-    return this._lock.exec(fn)
+    return this._queue.add(fn)
   }
   _empty () {
     this.indexes = {

@@ -2,9 +2,9 @@
 
 import fs from 'fs'
 import { promisify } from 'util'
-import Index from './indexes'
-import PLock from 'plock'
 
+import Index from './indexes'
+import Queue from './queue'
 import { NotExists, KeyViolation } from './errors'
 import { getId, cleanObject, parse, stringify } from './util'
 
@@ -30,9 +30,7 @@ export default class Datastore {
       ...options
     }
     this.loaded = false
-    // start with lock locked, to queue up DB actions
-    this._lock = new PLock()
-    this._lock.lock()
+    this._queue = new Queue()
     this._empty()
     if (options.autoload) this.load()
     if (options.autocompact) this.setAutoCompaction(options.autocompact)
@@ -43,8 +41,8 @@ export default class Datastore {
     if (this._loaded) return this._loaded
 
     this._loaded = this._hydrate()
-      // release the lock to allow queued DB access
-      .then(() => this._lock.release())
+      // start the queue
+      .then(() => this._queue.start())
       // queue a compaction
       .then(() => this.compact())
       // everything now loaded
@@ -125,7 +123,7 @@ export default class Datastore {
   // PRIVATE API
 
   _execute (fn) {
-    return this._lock.exec(fn)
+    return this._queue.add(fn)
   }
 
   _empty () {

@@ -3,7 +3,7 @@ import cleanup from 'rollup-plugin-cleanup'
 
 export default {
   input: 'src/index.js',
-  external: [ 'fs', 'util', 'plock' ],
+  external: [ 'fs', 'util' ],
   plugins: [
     cleanup(),
     process.env.NODE_ENV === 'production' && terser()

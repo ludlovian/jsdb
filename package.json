@@ -26,9 +26,7 @@
     "snazzy": "^8.0.0",
     "standard": "^14.3.1"
   },
-  "dependencies": {
-    "plock": "github:ludlovian/plock"
-  },
+  "dependencies": {},
   "ava": {
     "require": [
       "esm"
