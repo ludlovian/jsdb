@@ -169,6 +169,7 @@ test('errors', async t => {
   await db.ensureIndex({ fieldName: 'foo', unique: true })
   await db.insert({ _id: 1, foo: 'bar' })
   await t.throwsAsync(() => db.insert({ _id: 2, foo: 'bar' }))
+  t.deepEqual(await db.indexes.foo.find('bar'), { _id: 1, foo: 'bar' })
 
   await db.insert({ _id: 2, foo: 'baz' })
   await t.throwsAsync(() => db.update({ _id: 1, foo: 'baz' }))

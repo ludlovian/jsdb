@@ -211,14 +211,14 @@ class Datastore {
   }
   async insert (doc) {
     return this._execute(async () => {
-      doc = this._upsertDoc(doc, { mustNotExist: true });
+      doc = await this._upsertDoc(doc, { mustNotExist: true });
       await this._append(doc);
       return doc
     })
   }
   async update (doc) {
     return this._execute(async () => {
-      doc = this._upsertDoc(doc, { mustExist: true });
+      doc = await this._upsertDoc(doc, { mustExist: true });
       await this._append(doc);
       return doc
     })
@@ -298,7 +298,7 @@ class Datastore {
   _deleteIndex (fieldName) {
     delete this.indexes[fieldName];
   }
-  _upsertDoc (doc, { mustExist = false, mustNotExist = false } = {}) {
+  async _upsertDoc (doc, { mustExist = false, mustNotExist = false } = {}) {
     const olddoc = this.indexes._id._data.get(doc._id);
     if (!olddoc && mustExist) throw new NotExists(doc)
     if (olddoc && mustNotExist) throw new KeyViolation(doc, '_id')
@@ -315,13 +315,7 @@ class Datastore {
       });
       return doc
     } catch (err) {
-      ixs.forEach(ix => {
-        ix._deleteDoc(doc);
-        if (olddoc) {
-          ix._deleteDoc(olddoc);
-          ix._insertDoc(olddoc);
-        }
-      });
+      await this._hydrate();
       throw err
     }
   }
