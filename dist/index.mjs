@@ -134,7 +134,7 @@ class UniqueIndex extends Index {
     this._data.set(key, doc);
   }
   _removeLink (key, doc) {
-    this._data.delete(key);
+    if (this._data.get(key) === doc) this._data.delete(key);
   }
 }
 
@@ -211,14 +211,14 @@ class Datastore {
   }
   async insert (doc) {
     return this._execute(async () => {
-      doc = await this._upsertDoc(doc, { mustNotExist: true });
+      doc = this._upsertDoc(doc, { mustNotExist: true });
       await this._append(doc);
       return doc
     })
   }
   async update (doc) {
     return this._execute(async () => {
-      doc = await this._upsertDoc(doc, { mustExist: true });
+      doc = this._upsertDoc(doc, { mustExist: true });
       await this._append(doc);
       return doc
     })
@@ -298,7 +298,7 @@ class Datastore {
   _deleteIndex (fieldName) {
     delete this.indexes[fieldName];
   }
-  async _upsertDoc (doc, { mustExist = false, mustNotExist = false } = {}) {
+  _upsertDoc (doc, { mustExist = false, mustNotExist = false } = {}) {
     const olddoc = this.indexes._id._data.get(doc._id);
     if (!olddoc && mustExist) throw new NotExists(doc)
     if (olddoc && mustNotExist) throw new KeyViolation(doc, '_id')
@@ -315,7 +315,13 @@ class Datastore {
       });
       return doc
     } catch (err) {
-      await this._hydrate();
+      ixs.forEach(ix => {
+        ix._deleteDoc(doc);
+        if (olddoc) {
+          ix._deleteDoc(olddoc);
+          ix._insertDoc(olddoc);
+        }
+      });
       throw err
     }
   }

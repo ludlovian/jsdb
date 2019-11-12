@@ -86,6 +86,6 @@ class UniqueIndex extends Index {
   }
 
   _removeLink (key, doc) {
-    this._data.delete(key)
+    if (this._data.get(key) === doc) this._data.delete(key)
   }
 }
