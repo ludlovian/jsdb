@@ -1,34 +1,47 @@
 'use strict'
 
+const resolved = Promise.resolve()
+
 export default class Queue {
-  constructor (start) {
-    this._resetReadyFlag()
+  constructor (width = 1) {
+    let running = 0
+    const waiting = []
+    const listeners = []
 
-    // empty queue just wait until we are ready
-    this._head = this._ready
-    if (start) this.start()
-  }
-
-  add (fn) {
-    const waitForReady = () => this._ready
-    // the consumers promise which is returned
-    const prom = this._head.then(fn)
-    // the queue which swallows any error and waits to continue
-    this._head = prom.then(waitForReady, waitForReady)
-    return prom
-  }
-
-  stop () {
-    return this.add(() => this._resetReadyFlag())
-  }
-
-  _resetReadyFlag () {
-    this.started = false
-    this._ready = new Promise(resolve => {
-      this.start = () => {
-        this.started = true
-        resolve()
+    Object.defineProperties(this, {
+      running: {
+        get: () => running
+      },
+      pending: {
+        get: () => waiting.length
       }
     })
+
+    this.add = fn =>
+      new Promise((resolve, reject) => {
+        const job = { fn, resolve, reject }
+        if (running < width) startJob(job)
+        else waiting.push(job)
+      })
+
+    this.wait = () =>
+      !running ? resolved : new Promise(resolve => listeners.push(resolve))
+
+    function startJob ({ fn, resolve, reject }) {
+      running++
+      resolved
+        .then(() => fn())
+        .then(resolve, reject)
+        .then(endJob)
+    }
+
+    function endJob () {
+      if (--running < width && waiting.length) {
+        startJob(waiting.shift())
+      }
+      if (running === 0) {
+        listeners.splice(0).map(resolve => resolve())
+      }
+    }
   }
 }

@@ -10,7 +10,9 @@ const isResolved = (p, ms = 20) =>
 
 test('queue creation', async t => {
   const q = new Queue()
-  t.false(q.started)
+  t.is(q.running, 0)
+  t.is(q.pending, 0)
+  t.true(await isResolved(q.wait()))
 })
 
 test('basic add', async t => {
@@ -23,9 +25,6 @@ test('basic add', async t => {
 
   t.false(await isResolved(p1))
 
-  q.start()
-  t.false(await isResolved(p1))
-
   d1.resolve()
   t.true(await isResolved(p1))
   t.false(await isResolved(p2))
@@ -34,28 +33,27 @@ test('basic add', async t => {
   t.true(await isResolved(p2))
 })
 
-test('stop', async t => {
-  const q = new Queue(true)
-
-  const p1 = q.add(() => 'foo')
-  const p2 = q.stop()
-  const p3 = q.add(() => 'bar')
-
-  t.true(q.started)
-
-  t.is(await p1, 'foo')
-  t.true(await isResolved(p2))
+test('wait', async t => {
+  const q = new Queue(2)
+  const d1 = defer()
+  const d2 = defer()
+  const p1 = q.add(() => d1)
+  const p2 = q.add(() => d2)
+  const p3 = q.wait()
   t.false(await isResolved(p3))
-  t.false(q.started)
 
-  q.start()
-  t.is(await p3, 'bar')
-  t.true(q.started)
+  d2.resolve('bar')
+  t.false(await isResolved(p3))
+
+  d1.resolve('foo')
+  t.is(await p1, 'foo')
+  t.is(await p2, 'bar')
+  t.true(await isResolved(p3))
 })
 
 test('rejecting work item', async t => {
   const e = new Error('oops')
-  const q = new Queue(true)
+  const q = new Queue(1)
   const p1 = q.add(() => Promise.reject(e))
   await t.throwsAsync(p1, 'oops')
 

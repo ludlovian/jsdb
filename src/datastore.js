@@ -31,6 +31,12 @@ export default class Datastore {
     }
     this.loaded = false
     this._queue = new Queue()
+    this._queue.add(
+      () =>
+        new Promise(resolve => {
+          this._starter = resolve
+        })
+    )
     this._empty()
     if (options.autoload) this.load()
     if (options.autocompact) this.setAutoCompaction(options.autocompact)
@@ -42,7 +48,7 @@ export default class Datastore {
 
     this._loaded = this._hydrate()
       // start the queue
-      .then(() => this._queue.start())
+      .then(() => this._starter())
       // queue a compaction
       .then(() => this.compact())
       // everything now loaded

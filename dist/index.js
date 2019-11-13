@@ -142,29 +142,43 @@ class UniqueIndex extends Index {
   }
 }
 
+const resolved = Promise.resolve();
 class Queue {
-  constructor (start) {
-    this._resetReadyFlag();
-    this._head = this._ready;
-    if (start) this.start();
-  }
-  add (fn) {
-    const waitForReady = () => this._ready;
-    const prom = this._head.then(fn);
-    this._head = prom.then(waitForReady, waitForReady);
-    return prom
-  }
-  stop () {
-    return this.add(() => this._resetReadyFlag())
-  }
-  _resetReadyFlag () {
-    this.started = false;
-    this._ready = new Promise(resolve => {
-      this.start = () => {
-        this.started = true;
-        resolve();
-      };
+  constructor (width = 1) {
+    let running = 0;
+    const waiting = [];
+    const listeners = [];
+    Object.defineProperties(this, {
+      running: {
+        get: () => running
+      },
+      pending: {
+        get: () => waiting.length
+      }
     });
+    this.add = fn =>
+      new Promise((resolve, reject) => {
+        const job = { fn, resolve, reject };
+        if (running < width) startJob(job);
+        else waiting.push(job);
+      });
+    this.wait = () =>
+      !running ? resolved : new Promise(resolve => listeners.push(resolve));
+    function startJob ({ fn, resolve, reject }) {
+      running++;
+      resolved
+        .then(() => fn())
+        .then(resolve, reject)
+        .then(endJob);
+    }
+    function endJob () {
+      if (--running < width && waiting.length) {
+        startJob(waiting.shift());
+      }
+      if (running === 0) {
+        listeners.splice(0).map(resolve => resolve());
+      }
+    }
   }
 }
 
@@ -190,6 +204,12 @@ class Datastore {
     };
     this.loaded = false;
     this._queue = new Queue();
+    this._queue.add(
+      () =>
+        new Promise(resolve => {
+          this._starter = resolve;
+        })
+    );
     this._empty();
     if (options.autoload) this.load();
     if (options.autocompact) this.setAutoCompaction(options.autocompact);
@@ -197,7 +217,7 @@ class Datastore {
   async load () {
     if (this._loaded) return this._loaded
     this._loaded = this._hydrate()
-      .then(() => this._queue.start())
+      .then(() => this._starter())
       .then(() => this.compact())
       .then(() => {
         this.loaded = true;
