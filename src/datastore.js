@@ -63,8 +63,8 @@ export default class Datastore {
     return this._execute(() => this._hydrate())
   }
 
-  compact () {
-    return this._execute(() => this._rewrite())
+  compact (opts) {
+    return this._execute(() => this._rewrite(opts))
   }
 
   getAll () {
@@ -115,9 +115,9 @@ export default class Datastore {
     })
   }
 
-  setAutoCompaction (interval) {
+  setAutoCompaction (interval, opts) {
     this.stopAutoCompaction()
-    this.autoCompaction = setInterval(() => this.compact(), interval)
+    this.autoCompaction = setInterval(() => this.compact(opts), interval)
   }
 
   stopAutoCompaction () {
@@ -219,14 +219,18 @@ export default class Datastore {
     await appendFile(filename, line, 'utf8')
   }
 
-  async _rewrite (doc) {
+  async _rewrite ({ sorted = false } = {}) {
     const {
       filename,
       serialize,
       special: { addIndex }
     } = this.options
     const temp = filename + '~'
-    const lines = Array.from(this._getAll()).map(doc => serialize(doc) + '\n')
+    const docs = this._getAll()
+    if (sorted) {
+      docs.sort((a, b) => (a._id < b._id ? -1 : 1))
+    }
+    const lines = docs.map(doc => serialize(doc) + '\n')
     const indexes = Object.values(this.indexes)
       .filter(ix => ix.options.fieldName !== '_id')
       .map(ix => ({ [addIndex]: ix.options }))

@@ -189,3 +189,18 @@ test('auto compaction', async t => {
   const file = await readFile(t.context.file, 'utf8')
   t.snapshot(file)
 })
+
+test('sorted', async t => {
+  const db = new Datastore(t.context.file)
+  await db.load()
+  await db.insert({ _id: 'foo' })
+  await db.insert({ _id: 'bar' })
+  await db.insert({ _id: 'baz' })
+
+  let file = await readFile(t.context.file, 'utf8')
+  t.snapshot(file)
+
+  await db.compact({ sorted: true })
+  file = await readFile(t.context.file, 'utf8')
+  t.snapshot(file)
+})

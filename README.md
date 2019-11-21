@@ -74,8 +74,12 @@ returns an array of all docs.
 
 ### .compact
 
-`await db.compact()`
+`await db.compact(opts)`
 comapcts and rewrites the database.
+
+Options:
+
+`sorted` if set, sorts the records in _id order (default: false)
 
 ### .setAutoCompaction
 
