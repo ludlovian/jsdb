@@ -42,21 +42,18 @@ export default class Datastore {
     if (options.autocompact) this.setAutoCompaction(options.autocompact)
   }
 
-  load () {
-    // if loading/loaded already, return the loaded promise
-    if (this._loaded) return this._loaded
+  async load () {
+    if (this.loaded || this.loading) return
+    this.loading = true
 
-    this._loaded = this._hydrate()
-      // queue a compaction
-      .then(() => this.compact())
-      // everything now loaded
-      .then(() => {
-        this.loaded = true
-      })
-      // start the queue
-      .then(() => this._starter())
+    await this._hydrate()
+    await this._rewrite()
 
-    return this._loaded
+    this.loaded = true
+    this.loading = false
+
+    // start the queue
+    this._starter()
   }
 
   reload () {
