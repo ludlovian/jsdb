@@ -204,3 +204,17 @@ test('sorted', async t => {
   file = await readFile(t.context.file, 'utf8')
   t.snapshot(file)
 })
+
+test('upsert', async t => {
+  const db = new Datastore(t.context.file)
+  await db.load()
+  await db.upsert({_id: 'foo', bar: 'baz'})
+
+  let file = await readFile(t.context.file, 'utf8')
+  t.snapshot(file)
+
+  await db.upsert({_id: 'foo', bar: 'quux'})
+
+  file = await readFile(t.context.file, 'utf8')
+  t.snapshot(file)
+})

@@ -247,6 +247,13 @@ class Datastore {
       return doc
     })
   }
+  async upsert (doc) {
+    return this._execute(async () => {
+      doc = this._upsertDoc(doc);
+      await this._append(doc);
+      return doc
+    })
+  }
   async delete (doc) {
     const { deleted } = this.options.special;
     return this._execute(async () => {
