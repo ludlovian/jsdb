@@ -61,26 +61,26 @@ test('full activity', async t => {
   await db.load()
   await db.insert({ _id: 1, foo: 'bar', date })
   let r
-  r = await db.indexes._id.find(1)
+  r = await db.find('_id', 1)
   t.is(r.foo, 'bar')
-  r = await db.indexes._id.findOne(1)
+  r = await db.find('_id', 1)
   t.is(r.foo, 'bar')
   t.is(r.date, date)
 
   await db.ensureIndex({ fieldName: 'foo', sparse: true })
   await db.ensureIndex({ fieldName: 'foo', sparse: true })
-  r = await db.indexes.foo.find('bar')
+  r = await db.find('foo', 'bar')
   t.is(r[0]._id, 1)
 
-  r = await db.indexes.foo.findOne('bar')
+  r = await db.findOne('foo', 'bar')
   t.is(r._id, 1)
 
   await db.insert({ _id: 2, foo: 'bar' })
-  r = await db.indexes.foo.find('bar')
+  r = await db.find('foo', 'bar')
   t.is(r.length, 2)
 
   await db.update({ _id: 1, bar: 'quux' })
-  r = await db.indexes.foo.find('bar')
+  r = await db.find('foo', 'bar')
   t.is(r.length, 1)
 
   await db.delete({ _id: 1 })
@@ -93,14 +93,13 @@ test('full activity', async t => {
 
   db = new Datastore(t.context.file)
   await db.load()
-  t.falsy(db.indexes.foo)
 
   await db.ensureIndex({ fieldName: 'foo', sparse: true })
   await db.compact()
 
   await db.insert({ noId: true })
   t.is((await db.getAll()).length, 2)
-  t.is((await db.indexes._id.getAll()).length, 2)
+  t.is((await db.findAll('_id')).length, 2)
 })
 
 test('generated id', async t => {
@@ -134,11 +133,11 @@ test('reload', async t => {
 test('empty data', async t => {
   const db = new Datastore(t.context.file)
   await db.load()
-  t.is(await db.indexes._id.findOne(1), undefined)
-  t.is(await db.indexes._id.find(1), undefined)
+  t.is(await db.findOne('_id', 1), undefined)
+  t.is(await db.find('_id', 1), undefined)
   await db.ensureIndex({ fieldName: 'foo' })
-  t.is(await db.indexes.foo.findOne(1), undefined)
-  t.deepEqual(await db.indexes.foo.find(1), [])
+  t.is(await db.findOne('foo', 1), undefined)
+  t.deepEqual(await db.find('foo', 1), [])
 })
 
 test('array indexes', async t => {
@@ -147,13 +146,13 @@ test('array indexes', async t => {
   await db.ensureIndex({ fieldName: 'foo' })
   await db.insert({ _id: 1, foo: ['bar', 'baz'] })
   await db.insert({ _id: 2, foo: ['bar', 'bar'] })
-  let r = await db.indexes.foo.find('bar')
+  let r = await db.find('foo', 'bar')
   t.is(r.length, 2)
-  r = await db.indexes.foo.find('baz')
+  r = await db.find('foo', 'baz')
   t.is(r.length, 1)
 
   await db.update({ _id: 1, foo: 'bar' })
-  r = await db.indexes.foo.find('baz')
+  r = await db.find('foo', 'baz')
   t.is(r.length, 0)
 })
 
@@ -169,10 +168,14 @@ test('errors', async t => {
   await db.ensureIndex({ fieldName: 'foo', unique: true })
   await db.insert({ _id: 1, foo: 'bar' })
   await t.throwsAsync(() => db.insert({ _id: 2, foo: 'bar' }))
-  t.deepEqual(await db.indexes.foo.find('bar'), { _id: 1, foo: 'bar' })
+  t.deepEqual(await db.find('foo', 'bar'), { _id: 1, foo: 'bar' })
 
   await db.insert({ _id: 2, foo: 'baz' })
   await t.throwsAsync(() => db.update({ _id: 1, foo: 'baz' }))
+
+  await t.throwsAsync(() => db.find('quux', 'l33t'))
+  await t.throwsAsync(() => db.findOne('quux', 'l33t'))
+  await t.throwsAsync(() => db.findAll('quux'))
 })
 
 test('auto compaction', async t => {

@@ -72,6 +72,27 @@ Deletes the doc whose `_id` matches this one. Returns the old stored doc.
 
 returns an array of all docs.
 
+### .find
+
+`matching = await db.find(<indexFieldName>, <value>)`
+
+Returns a list of the matching docs which can be empty. Unique indices act like `.findOne` and return a single doc or `undefined`.
+
+### .findOne
+
+`matching = await db.findOne(<indexFieldName>, <value>)`
+
+Returns the first matching doc, or `undefined`
+
+### .findAll
+
+`allIndexedDocs = await db.findAll(<indexFieldName>)`
+
+returns an array of `[key, [matchingDocs]]` for the index.
+
+Unique indices return an array of `[key, doc]`
+
+
 ### .compact
 
 `await db.compact(opts)`
@@ -79,7 +100,7 @@ comapcts and rewrites the database.
 
 Options:
 
-`sorted` if set, sorts the records in _id order (default: false)
+`sorted` if set, sorts the records in `_id` order (default: false)
 
 ### .setAutoCompaction
 
@@ -93,22 +114,3 @@ Sets auto-scheduled compaction
 
 Stops any scheduled compaction
 
-### Index.find
-
-`matching = await db.indexes.<fieldName>.find(<value>)`
-
-Returns a list of the matching docs which can be empty. Unique indices act like `findOne` and return a single doc or `undefined`.
-
-### Index.findOne
-
-`matching = await db.indexes.<fieldName>.findOne(<value>)`
-
-Returns the first matching doc, or `undefined`
-
-### Index.getAll
-
-`allIndexedDocs = await db.indexes.<fieldName>.getAll()`
-
-returns an array of `[key, [matchingDocs]]` for the index.
-
-Unique indices return an array of `[key, doc]`

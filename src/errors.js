@@ -22,3 +22,10 @@ export class NotExists extends DatastoreError {
     this.record = doc
   }
 }
+
+export class NoIndex extends DatastoreError {
+  constructor (fieldName) {
+    super('No such index')
+    this.fieldName = fieldName
+  }
+}

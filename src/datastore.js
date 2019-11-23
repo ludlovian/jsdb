@@ -3,10 +3,9 @@
 import fs from 'fs'
 import { promisify } from 'util'
 
-import Index from './indexes'
 import Queue from './queue'
-import { NotExists, KeyViolation } from './errors'
-import { getId, cleanObject, parse, stringify } from './util'
+import { NotExists, KeyViolation, NoIndex } from './errors'
+import { getId, cleanObject, parse, stringify, delve } from './util'
 
 const readFile = promisify(fs.readFile)
 const appendFile = promisify(fs.appendFile)
@@ -42,6 +41,8 @@ export default class Datastore {
     if (options.autocompact) this.setAutoCompaction(options.autocompact)
   }
 
+  // Loading and compaction
+
   async load () {
     if (this.loaded || this.loading) return
     this.loading = true
@@ -63,6 +64,8 @@ export default class Datastore {
   compact (opts) {
     return this._execute(() => this._rewrite(opts))
   }
+
+  // Data modification
 
   getAll () {
     return this._execute(() => this._getAll())
@@ -101,10 +104,12 @@ export default class Datastore {
     })
   }
 
+  // Indexes
+
   async ensureIndex (options) {
     const { fieldName } = options
     const { addIndex } = this.options.special
-    if (this.indexes[fieldName]) return
+    if (this._indexes[fieldName]) return
     return this._execute(() => {
       this._addIndex(options)
       return this._append({ [addIndex]: options })
@@ -117,6 +122,27 @@ export default class Datastore {
     return this._execute(() => {
       this._deleteIndex(fieldName)
       return this._append({ [deleteIndex]: { fieldName } })
+    })
+  }
+
+  find (fieldName, value) {
+    return this._execute(async () => {
+      if (!this._indexes[fieldName]) throw new NoIndex(fieldName)
+      return this._indexes[fieldName].find(value)
+    })
+  }
+
+  findOne (fieldName, value) {
+    return this._execute(async () => {
+      if (!this._indexes[fieldName]) throw new NoIndex(fieldName)
+      return this._indexes[fieldName].findOne(value)
+    })
+  }
+
+  findAll (fieldName) {
+    return this._execute(async () => {
+      if (!this._indexes[fieldName]) throw new NoIndex(fieldName)
+      return this._indexes[fieldName].findAll()
     })
   }
 
@@ -138,8 +164,8 @@ export default class Datastore {
   }
 
   _empty () {
-    this.indexes = {
-      _id: Index.create(this, { fieldName: '_id', unique: true })
+    this._indexes = {
+      _id: Index.create({ fieldName: '_id', unique: true })
     }
   }
 
@@ -168,42 +194,42 @@ export default class Datastore {
   }
 
   _getAll () {
-    return Array.from(this.indexes._id._data.values())
+    return Array.from(this._indexes._id.data.values())
   }
 
   _addIndex (options) {
     const { fieldName } = options
-    const ix = Index.create(this, options)
-    this._getAll().forEach(doc => ix._insertDoc(doc))
-    this.indexes[fieldName] = ix
+    const ix = Index.create(options)
+    this._getAll().forEach(doc => ix.insertDoc(doc))
+    this._indexes[fieldName] = ix
   }
 
   _deleteIndex (fieldName) {
-    delete this.indexes[fieldName]
+    delete this._indexes[fieldName]
   }
 
   _upsertDoc (doc, { mustExist = false, mustNotExist = false } = {}) {
-    const olddoc = this.indexes._id._data.get(doc._id)
+    const olddoc = this._indexes._id.find(doc._id)
     if (!olddoc && mustExist) throw new NotExists(doc)
     if (olddoc && mustNotExist) throw new KeyViolation(doc, '_id')
     doc = cleanObject(doc)
     if (doc._id == null) {
-      const _id = getId(doc, this.indexes._id._data)
+      const _id = getId(doc, this._indexes._id.data)
       doc = { _id, ...doc }
     }
-    const ixs = Object.values(this.indexes)
+    const ixs = Object.values(this._indexes)
     try {
       ixs.forEach(ix => {
-        if (olddoc) ix._deleteDoc(olddoc)
-        ix._insertDoc(doc)
+        if (olddoc) ix.deleteDoc(olddoc)
+        ix.insertDoc(doc)
       })
       return doc
     } catch (err) {
       ixs.forEach(ix => {
-        ix._deleteDoc(doc)
+        ix.deleteDoc(doc)
         if (olddoc) {
-          ix._deleteDoc(olddoc)
-          ix._insertDoc(olddoc)
+          ix.deleteDoc(olddoc)
+          ix.insertDoc(olddoc)
         }
       })
       throw err
@@ -211,10 +237,10 @@ export default class Datastore {
   }
 
   _deleteDoc (doc) {
-    const ixs = Object.values(this.indexes)
-    const olddoc = this.indexes._id._data.get(doc._id)
+    const ixs = Object.values(this._indexes)
+    const olddoc = this._indexes._id.find(doc._id)
     if (!olddoc) throw new NotExists(doc)
-    ixs.forEach(ix => ix._deleteDoc(olddoc))
+    ixs.forEach(ix => ix.deleteDoc(olddoc))
     return olddoc
   }
 
@@ -236,7 +262,7 @@ export default class Datastore {
       docs.sort((a, b) => (a._id < b._id ? -1 : 1))
     }
     const lines = docs.map(doc => serialize(doc) + '\n')
-    const indexes = Object.values(this.indexes)
+    const indexes = Object.values(this._indexes)
       .filter(ix => ix.options.fieldName !== '_id')
       .map(ix => ({ [addIndex]: ix.options }))
       .map(doc => serialize(doc) + '\n')
@@ -246,5 +272,86 @@ export default class Datastore {
     await syncFile(fh)
     await closeFile(fh)
     await renameFile(temp, filename)
+  }
+}
+
+class Index {
+  static create (options) {
+    return new (options.unique ? UniqueIndex : Index)(options)
+  }
+
+  constructor (options) {
+    this.options = options
+    this.data = new Map()
+  }
+
+  find (value) {
+    return this.data.get(value) || []
+  }
+
+  findOne (value) {
+    const list = this.data.get(value)
+    return list ? list[0] : undefined
+  }
+
+  findAll () {
+    return Array.from(this.data.entries())
+  }
+
+  addLink (key, doc) {
+    let list = this.data.get(key)
+    if (!list) {
+      list = []
+      this.data.set(key, list)
+    }
+    if (!list.includes(doc)) list.push(doc)
+  }
+
+  removeLink (key, doc) {
+    const list = this.data.get(key) || []
+    const index = list.indexOf(doc)
+    if (index === -1) return
+    list.splice(index, 1)
+    if (!list.length) this.data.delete(key)
+  }
+
+  insertDoc (doc) {
+    const key = delve(doc, this.options.fieldName)
+    if (key == null && this.options.sparse) return
+    if (Array.isArray(key)) {
+      key.forEach(key => this.addLink(key, doc))
+    } else {
+      this.addLink(key, doc)
+    }
+  }
+
+  deleteDoc (doc) {
+    const key = delve(doc, this.options.fieldName)
+    if (Array.isArray(key)) {
+      key.forEach(key => this.removeLink(key, doc))
+    } else {
+      this.removeLink(key, doc)
+    }
+  }
+}
+
+class UniqueIndex extends Index {
+  find (value) {
+    return this.data.get(value)
+  }
+
+  findOne (value) {
+    return this.find(value)
+  }
+
+  addLink (key, doc) {
+    if (this.data.has(key)) {
+      throw new KeyViolation(doc, this.options.fieldName)
+    }
+    this.data.set(key, doc)
+  }
+
+  removeLink (key, doc) {
+    if (this.data.get(key) === doc) this.data.delete(key)
   }
 }

@@ -5,6 +5,46 @@ function _interopDefault (ex) { return (ex && (typeof ex === 'object') && 'defau
 var fs = _interopDefault(require('fs'));
 var util = require('util');
 
+const resolved = Promise.resolve();
+class Queue {
+  constructor (width = 1) {
+    let running = 0;
+    const waiting = [];
+    const listeners = [];
+    Object.defineProperties(this, {
+      running: {
+        get: () => running
+      },
+      pending: {
+        get: () => waiting.length
+      }
+    });
+    this.add = fn =>
+      new Promise((resolve, reject) => {
+        const job = { fn, resolve, reject };
+        if (running < width) startJob(job);
+        else waiting.push(job);
+      });
+    this.wait = () =>
+      !running ? resolved : new Promise(resolve => listeners.push(resolve));
+    function startJob ({ fn, resolve, reject }) {
+      running++;
+      resolved
+        .then(() => fn())
+        .then(resolve, reject)
+        .then(endJob);
+    }
+    function endJob () {
+      if (--running < width && waiting.length) {
+        startJob(waiting.shift());
+      }
+      if (running === 0) {
+        listeners.splice(0).map(resolve => resolve());
+      }
+    }
+  }
+}
+
 class DatastoreError extends Error {
   constructor (message) {
     super(message);
@@ -23,6 +63,12 @@ class NotExists extends DatastoreError {
   constructor (doc) {
     super('Record does not exist');
     this.record = doc;
+  }
+}
+class NoIndex extends DatastoreError {
+  constructor (fieldName) {
+    super('No such index');
+    this.fieldName = fieldName;
   }
 }
 
@@ -66,120 +112,6 @@ function parse (s) {
     if (typeof v === 'object' && DATE_SENTINEL in v) return v[DATE_SENTINEL]
     return v
   })
-}
-
-class Index {
-  static create (datastore, options) {
-    return options.unique
-      ? new UniqueIndex(datastore, options)
-      : new Index(datastore, options)
-  }
-  constructor (datastore, options) {
-    this._execute = datastore._execute.bind(datastore);
-    this.options = options;
-    this._data = new Map();
-  }
-  find (value) {
-    return this._execute(() => this._data.get(value) || [])
-  }
-  findOne (value) {
-    return this._execute(() => {
-      const list = this._data.get(value);
-      return list ? list[0] : undefined
-    })
-  }
-  getAll () {
-    return this._execute(() => Array.from(this._data.entries()))
-  }
-  _addLink (key, doc) {
-    let list = this._data.get(key);
-    if (!list) {
-      list = [];
-      this._data.set(key, list);
-    }
-    if (!list.includes(doc)) list.push(doc);
-  }
-  _removeLink (key, doc) {
-    const list = this._data.get(key) || [];
-    const index = list.indexOf(doc);
-    if (index === -1) return
-    list.splice(index, 1);
-    if (!list.length) this._data.delete(key);
-  }
-  _insertDoc (doc) {
-    const key = delve(doc, this.options.fieldName);
-    if (key == null && this.options.sparse) return
-    if (Array.isArray(key)) {
-      key.forEach(key => this._addLink(key, doc));
-    } else {
-      this._addLink(key, doc);
-    }
-  }
-  _deleteDoc (doc) {
-    const key = delve(doc, this.options.fieldName);
-    if (Array.isArray(key)) {
-      key.forEach(key => this._removeLink(key, doc));
-    } else {
-      this._removeLink(key, doc);
-    }
-  }
-}
-class UniqueIndex extends Index {
-  find (value) {
-    return this.findOne(value)
-  }
-  findOne (value) {
-    return this._execute(() => this._data.get(value))
-  }
-  _addLink (key, doc) {
-    if (this._data.has(key)) {
-      throw new KeyViolation(doc, this.options.fieldName)
-    }
-    this._data.set(key, doc);
-  }
-  _removeLink (key, doc) {
-    if (this._data.get(key) === doc) this._data.delete(key);
-  }
-}
-
-const resolved = Promise.resolve();
-class Queue {
-  constructor (width = 1) {
-    let running = 0;
-    const waiting = [];
-    const listeners = [];
-    Object.defineProperties(this, {
-      running: {
-        get: () => running
-      },
-      pending: {
-        get: () => waiting.length
-      }
-    });
-    this.add = fn =>
-      new Promise((resolve, reject) => {
-        const job = { fn, resolve, reject };
-        if (running < width) startJob(job);
-        else waiting.push(job);
-      });
-    this.wait = () =>
-      !running ? resolved : new Promise(resolve => listeners.push(resolve));
-    function startJob ({ fn, resolve, reject }) {
-      running++;
-      resolved
-        .then(() => fn())
-        .then(resolve, reject)
-        .then(endJob);
-    }
-    function endJob () {
-      if (--running < width && waiting.length) {
-        startJob(waiting.shift());
-      }
-      if (running === 0) {
-        listeners.splice(0).map(resolve => resolve());
-      }
-    }
-  }
 }
 
 const readFile = util.promisify(fs.readFile);
@@ -264,7 +196,7 @@ class Datastore {
   async ensureIndex (options) {
     const { fieldName } = options;
     const { addIndex } = this.options.special;
-    if (this.indexes[fieldName]) return
+    if (this._indexes[fieldName]) return
     return this._execute(() => {
       this._addIndex(options);
       return this._append({ [addIndex]: options })
@@ -276,6 +208,24 @@ class Datastore {
     return this._execute(() => {
       this._deleteIndex(fieldName);
       return this._append({ [deleteIndex]: { fieldName } })
+    })
+  }
+  find (fieldName, value) {
+    return this._execute(async () => {
+      if (!this._indexes[fieldName]) throw new NoIndex(fieldName)
+      return this._indexes[fieldName].find(value)
+    })
+  }
+  findOne (fieldName, value) {
+    return this._execute(async () => {
+      if (!this._indexes[fieldName]) throw new NoIndex(fieldName)
+      return this._indexes[fieldName].findOne(value)
+    })
+  }
+  findAll (fieldName) {
+    return this._execute(async () => {
+      if (!this._indexes[fieldName]) throw new NoIndex(fieldName)
+      return this._indexes[fieldName].findAll()
     })
   }
   setAutoCompaction (interval, opts) {
@@ -291,8 +241,8 @@ class Datastore {
     return this._queue.add(fn)
   }
   _empty () {
-    this.indexes = {
-      _id: Index.create(this, { fieldName: '_id', unique: true })
+    this._indexes = {
+      _id: Index.create({ fieldName: '_id', unique: true })
     };
   }
   async _hydrate () {
@@ -317,49 +267,49 @@ class Datastore {
     }
   }
   _getAll () {
-    return Array.from(this.indexes._id._data.values())
+    return Array.from(this._indexes._id.data.values())
   }
   _addIndex (options) {
     const { fieldName } = options;
-    const ix = Index.create(this, options);
-    this._getAll().forEach(doc => ix._insertDoc(doc));
-    this.indexes[fieldName] = ix;
+    const ix = Index.create(options);
+    this._getAll().forEach(doc => ix.insertDoc(doc));
+    this._indexes[fieldName] = ix;
   }
   _deleteIndex (fieldName) {
-    delete this.indexes[fieldName];
+    delete this._indexes[fieldName];
   }
   _upsertDoc (doc, { mustExist = false, mustNotExist = false } = {}) {
-    const olddoc = this.indexes._id._data.get(doc._id);
+    const olddoc = this._indexes._id.find(doc._id);
     if (!olddoc && mustExist) throw new NotExists(doc)
     if (olddoc && mustNotExist) throw new KeyViolation(doc, '_id')
     doc = cleanObject(doc);
     if (doc._id == null) {
-      const _id = getId(doc, this.indexes._id._data);
+      const _id = getId(doc, this._indexes._id.data);
       doc = { _id, ...doc };
     }
-    const ixs = Object.values(this.indexes);
+    const ixs = Object.values(this._indexes);
     try {
       ixs.forEach(ix => {
-        if (olddoc) ix._deleteDoc(olddoc);
-        ix._insertDoc(doc);
+        if (olddoc) ix.deleteDoc(olddoc);
+        ix.insertDoc(doc);
       });
       return doc
     } catch (err) {
       ixs.forEach(ix => {
-        ix._deleteDoc(doc);
+        ix.deleteDoc(doc);
         if (olddoc) {
-          ix._deleteDoc(olddoc);
-          ix._insertDoc(olddoc);
+          ix.deleteDoc(olddoc);
+          ix.insertDoc(olddoc);
         }
       });
       throw err
     }
   }
   _deleteDoc (doc) {
-    const ixs = Object.values(this.indexes);
-    const olddoc = this.indexes._id._data.get(doc._id);
+    const ixs = Object.values(this._indexes);
+    const olddoc = this._indexes._id.find(doc._id);
     if (!olddoc) throw new NotExists(doc)
-    ixs.forEach(ix => ix._deleteDoc(olddoc));
+    ixs.forEach(ix => ix.deleteDoc(olddoc));
     return olddoc
   }
   async _append (doc) {
@@ -379,7 +329,7 @@ class Datastore {
       docs.sort((a, b) => (a._id < b._id ? -1 : 1));
     }
     const lines = docs.map(doc => serialize(doc) + '\n');
-    const indexes = Object.values(this.indexes)
+    const indexes = Object.values(this._indexes)
       .filter(ix => ix.options.fieldName !== '_id')
       .map(ix => ({ [addIndex]: ix.options }))
       .map(doc => serialize(doc) + '\n');
@@ -389,6 +339,74 @@ class Datastore {
     await syncFile(fh);
     await closeFile(fh);
     await renameFile(temp, filename);
+  }
+}
+class Index {
+  static create (options) {
+    return new (options.unique ? UniqueIndex : Index)(options)
+  }
+  constructor (options) {
+    this.options = options;
+    this.data = new Map();
+  }
+  find (value) {
+    return this.data.get(value) || []
+  }
+  findOne (value) {
+    const list = this.data.get(value);
+    return list ? list[0] : undefined
+  }
+  findAll () {
+    return Array.from(this.data.entries())
+  }
+  addLink (key, doc) {
+    let list = this.data.get(key);
+    if (!list) {
+      list = [];
+      this.data.set(key, list);
+    }
+    if (!list.includes(doc)) list.push(doc);
+  }
+  removeLink (key, doc) {
+    const list = this.data.get(key) || [];
+    const index = list.indexOf(doc);
+    if (index === -1) return
+    list.splice(index, 1);
+    if (!list.length) this.data.delete(key);
+  }
+  insertDoc (doc) {
+    const key = delve(doc, this.options.fieldName);
+    if (key == null && this.options.sparse) return
+    if (Array.isArray(key)) {
+      key.forEach(key => this.addLink(key, doc));
+    } else {
+      this.addLink(key, doc);
+    }
+  }
+  deleteDoc (doc) {
+    const key = delve(doc, this.options.fieldName);
+    if (Array.isArray(key)) {
+      key.forEach(key => this.removeLink(key, doc));
+    } else {
+      this.removeLink(key, doc);
+    }
+  }
+}
+class UniqueIndex extends Index {
+  find (value) {
+    return this.data.get(value)
+  }
+  findOne (value) {
+    return this.find(value)
+  }
+  addLink (key, doc) {
+    if (this.data.has(key)) {
+      throw new KeyViolation(doc, this.options.fieldName)
+    }
+    this.data.set(key, doc);
+  }
+  removeLink (key, doc) {
+    if (this.data.get(key) === doc) this.data.delete(key);
   }
 }
 
