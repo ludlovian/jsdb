@@ -210,14 +210,14 @@ class Datastore {
     if (options.autoload) this.load();
     if (options.autocompact) this.setAutoCompaction(options.autocompact);
   }
-  async load () {
+  load () {
     if (this._loaded) return this._loaded
     this._loaded = this._hydrate()
-      .then(() => this._starter())
       .then(() => this.compact())
       .then(() => {
         this.loaded = true;
-      });
+      })
+      .then(() => this._starter());
     return this._loaded
   }
   reload () {
