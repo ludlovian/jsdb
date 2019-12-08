@@ -5,7 +5,7 @@ import { promisify } from 'util'
 
 import Queue from './queue'
 import { NotExists, KeyViolation, NoIndex } from './errors'
-import { getId, cleanObject, parse, stringify, delve } from './util'
+import { getId, cleanObject, parse, stringify, delve, sortOn } from './util'
 
 const readFile = promisify(fs.readFile)
 const appendFile = promisify(fs.appendFile)
@@ -259,7 +259,10 @@ export default class Datastore {
     const temp = filename + '~'
     const docs = this._getAll()
     if (sorted) {
-      docs.sort((a, b) => (a._id < b._id ? -1 : 1))
+      if (typeof sorted !== 'string' && typeof sorted !== 'function') {
+        sorted = '_id'
+      }
+      docs.sort(sortOn(sorted))
     }
     const lines = docs.map(doc => serialize(doc) + '\n')
     const indexes = Object.values(this._indexes)

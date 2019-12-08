@@ -109,6 +109,17 @@ function parse (s) {
     return v
   })
 }
+function sortOn (selector) {
+  if (typeof selector !== 'function') {
+    const key = selector;
+    selector = x => x[key];
+  }
+  return (a, b) => {
+    const x = selector(a);
+    const y = selector(b);
+    return x < y ? -1 : x > y ? 1 : 0
+  }
+}
 
 const readFile = promisify(fs.readFile);
 const appendFile = promisify(fs.appendFile);
@@ -322,7 +333,10 @@ class Datastore {
     const temp = filename + '~';
     const docs = this._getAll();
     if (sorted) {
-      docs.sort((a, b) => (a._id < b._id ? -1 : 1));
+      if (typeof sorted !== 'string' && typeof sorted !== 'function') {
+        sorted = '_id';
+      }
+      docs.sort(sortOn(sorted));
     }
     const lines = docs.map(doc => serialize(doc) + '\n');
     const indexes = Object.values(this._indexes)
@@ -406,6 +420,6 @@ class UniqueIndex extends Index {
   }
 }
 
-Object.assign(Datastore, { KeyViolation, NotExists });
+Object.assign(Datastore, { KeyViolation, NotExists, NoIndex });
 
 export default Datastore;
