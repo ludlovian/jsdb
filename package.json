@@ -1,6 +1,6 @@
 {
   "name": "jsdb",
-  "version": "2.2.1",
+  "version": "2.2.2",
   "description": "Simple NOSQL file-based database",
   "main": "dist/index.js",
   "scripts": {
