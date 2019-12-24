@@ -60,6 +60,12 @@ Inserts a new doc or docs. Returns the actual stored doc/docs with `_id` if not 
 
 Replaces existing doc (or docs) (based on `_id`) with this new one. Returns the new stored one(s).
 
+### .upsert
+
+`await db.upsert(doc|docs)`
+
+Either insert or update doc (or docs). Returns the new stored one(s).
+
 ### .delete
 
 `await db.delete(doc|docs)`
@@ -100,7 +106,9 @@ comapcts and rewrites the database.
 
 Options:
 
-`sorted` if set, sorts the records in `_id` order (default: false)
+`sorted` sorts the records (default: false)
+
+`sorted` can be a field name, a selector function, or if truthy then the same as if `_id` was given
 
 ### .setAutoCompaction
 

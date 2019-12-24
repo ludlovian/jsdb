@@ -112,7 +112,7 @@ function parse (s) {
 function sortOn (selector) {
   if (typeof selector !== 'function') {
     const key = selector;
-    selector = x => x[key];
+    selector = x => delve(x, key);
   }
   return (a, b) => {
     const x = selector(a);
