@@ -229,3 +229,22 @@ test('upsert', async t => {
   file = await readFile(t.context.file, 'utf8')
   t.snapshot(file)
 })
+
+test('mulit-row ops', async t => {
+  const db = new Datastore(t.context.file)
+  await db.load()
+  let rows = [{ name: 'foo', num: 1 }, { name: 'bar', num: 2 }]
+  rows = await db.insert(rows)
+  t.snapshot(rows)
+
+  rows = rows.map(doc => ({ ...doc, num: doc.num * 10 }))
+  rows = await db.update(rows)
+  t.snapshot(rows)
+
+  const file = await readFile(t.context.file, 'utf8')
+  t.snapshot(file)
+
+  await db.delete(rows)
+  rows = await db.getAll()
+  t.is(0, rows.length)
+})

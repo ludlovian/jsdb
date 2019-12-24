@@ -208,7 +208,11 @@ export default class Datastore {
     delete this._indexes[fieldName]
   }
 
-  _upsertDoc (doc, { mustExist = false, mustNotExist = false } = {}) {
+  _upsertDoc (doc, opts = {}) {
+    if (Array.isArray(doc)) {
+      return doc.map(d => this._upsertDoc(d, opts))
+    }
+    const { mustExist = false, mustNotExist = false } = opts
     const olddoc = this._indexes._id.find(doc._id)
     if (!olddoc && mustExist) throw new NotExists(doc)
     if (olddoc && mustNotExist) throw new KeyViolation(doc, '_id')
@@ -237,6 +241,9 @@ export default class Datastore {
   }
 
   _deleteDoc (doc) {
+    if (Array.isArray(doc)) {
+      return doc.map(doc => this._deleteDoc(doc))
+    }
     const ixs = Object.values(this._indexes)
     const olddoc = this._indexes._id.find(doc._id)
     if (!olddoc) throw new NotExists(doc)
@@ -246,8 +253,9 @@ export default class Datastore {
 
   async _append (doc) {
     const { filename, serialize } = this.options
-    const line = serialize(doc) + '\n'
-    await appendFile(filename, line, 'utf8')
+    const docs = Array.isArray(doc) ? doc : [doc]
+    const lines = docs.map(d => serialize(d) + '\n').join('')
+    await appendFile(filename, lines, 'utf8')
   }
 
   async _rewrite ({ sorted = false } = {}) {

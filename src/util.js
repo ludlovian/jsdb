@@ -58,6 +58,7 @@ export function sortOn (selector) {
   return (a, b) => {
     const x = selector(a)
     const y = selector(b)
+    // istanbul ignore next
     return x < y ? -1 : x > y ? 1 : 0
   }
 }

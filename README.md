@@ -50,21 +50,21 @@ removes the index
 
 ### .insert
 
-`await db.insert(doc)`
+`await db.insert(doc|docs)`
 
-Inserts a new doc. Returns the actual stored doc with `_id` if not given.
+Inserts a new doc or docs. Returns the actual stored doc/docs with `_id` if not given.
 
 ### .update
 
-`await db.update(updatedDoc)`
+`await db.update(doc|docs)`
 
-Replaces existing doc (based on `_id`) with this new one. Returns the new stored one.
+Replaces existing doc (or docs) (based on `_id`) with this new one. Returns the new stored one(s).
 
 ### .delete
 
-`await db.delete(doc)`
+`await db.delete(doc|docs)`
 
-Deletes the doc whose `_id` matches this one. Returns the old stored doc.
+Deletes the doc (or docs) whose `_id` matches this one. Returns the old stored doc.
 
 ### .getAll
 
