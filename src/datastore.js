@@ -5,7 +5,15 @@ import { promisify } from 'util'
 
 import Queue from './queue'
 import { NotExists, KeyViolation, NoIndex } from './errors'
-import { getId, cleanObject, parse, stringify, delve, sortOn } from './util'
+import {
+  getId,
+  cleanObject,
+  parse,
+  stringify,
+  delve,
+  sortOn,
+  makeArray
+} from './util'
 
 const readFile = promisify(fs.readFile)
 const appendFile = promisify(fs.appendFile)
@@ -99,7 +107,8 @@ export default class Datastore {
     const { deleted } = this.options.special
     return this._execute(async () => {
       doc = this._deleteDoc(doc)
-      await this._append({ [deleted]: doc })
+      const docs = makeArray(doc).map(d => ({ [deleted]: d }))
+      await this._append(docs)
       return doc
     })
   }
@@ -253,7 +262,7 @@ export default class Datastore {
 
   async _append (doc) {
     const { filename, serialize } = this.options
-    const docs = Array.isArray(doc) ? doc : [doc]
+    const docs = makeArray(doc)
     const lines = docs.map(d => serialize(d) + '\n').join('')
     await appendFile(filename, lines, 'utf8')
   }

@@ -120,6 +120,9 @@ function sortOn (selector) {
     return x < y ? -1 : x > y ? 1 : 0
   }
 }
+function makeArray (obj) {
+  return Array.isArray(obj) ? obj : [obj]
+}
 
 const readFile = promisify(fs.readFile);
 const appendFile = promisify(fs.appendFile);
@@ -196,7 +199,8 @@ class Datastore {
     const { deleted } = this.options.special;
     return this._execute(async () => {
       doc = this._deleteDoc(doc);
-      await this._append({ [deleted]: doc });
+      const docs = makeArray(doc).map(d => ({ [deleted]: d }));
+      await this._append(docs);
       return doc
     })
   }
@@ -328,7 +332,7 @@ class Datastore {
   }
   async _append (doc) {
     const { filename, serialize } = this.options;
-    const docs = Array.isArray(doc) ? doc : [doc];
+    const docs = makeArray(doc);
     const lines = docs.map(d => serialize(d) + '\n').join('');
     await appendFile(filename, lines, 'utf8');
   }
