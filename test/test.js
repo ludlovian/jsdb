@@ -88,8 +88,7 @@ test('full activity', async t => {
   await db.deleteIndex('foo')
   await db.deleteIndex('_id')
 
-  const file = await readFile(t.context.file, 'utf8')
-  t.snapshot(file)
+  t.snapshot(await readFile(t.context.file, 'utf8'))
 
   db = new Datastore(t.context.file)
   await db.load()
@@ -100,6 +99,8 @@ test('full activity', async t => {
   await db.insert({ noId: true })
   t.is((await db.getAll()).length, 2)
   t.is((await db.findAll('_id')).length, 2)
+
+  t.snapshot(await readFile(t.context.file, 'utf8'))
 })
 
 test('generated id', async t => {
@@ -154,6 +155,23 @@ test('array indexes', async t => {
   await db.update({ _id: 1, foo: 'bar' })
   r = await db.find('foo', 'baz')
   t.is(r.length, 0)
+})
+
+test('sparse indexes', async t => {
+  const db = new Datastore(t.context.file)
+  await db.load()
+  await db.ensureIndex({ fieldName: 'foo', unique: true, sparse: true })
+  await db.insert({ _id: 1, hasFoo: false })
+  await db.insert({ _id: 2, hasFoo: true, foo: 'bar' })
+  await db.insert({ _id: 3, hasFoo: false })
+  await db.insert({ _id: 4, hasFoo: true, foo: 'baz' })
+
+  const p2 = db.find('foo', 'bar')
+  const p4 = db.find('foo', 'baz')
+  t.is((await p2)._id, 2)
+  t.is((await p4)._id, 4)
+
+  await t.throwsAsync(db.insert({ foo: 'bar' }))
 })
 
 test('errors', async t => {

@@ -3,44 +3,37 @@
 function _interopDefault (ex) { return (ex && (typeof ex === 'object') && 'default' in ex) ? ex['default'] : ex; }
 
 var fs = _interopDefault(require('fs'));
-var util = require('util');
 
-const resolved = Promise.resolve();
-class Queue {
-  constructor (width = 1) {
-    let running = 0;
-    const waiting = [];
-    const listeners = [];
-    Object.defineProperties(this, {
-      running: {
-        get: () => running
-      },
-      pending: {
-        get: () => waiting.length
-      }
-    });
-    this.add = fn =>
-      new Promise((resolve, reject) => {
-        const job = { fn, resolve, reject };
-        if (running < width) startJob(job);
-        else waiting.push(job);
-      });
-    this.wait = () =>
-      !running ? resolved : new Promise(resolve => listeners.push(resolve));
-    function startJob ({ fn, resolve, reject }) {
-      running++;
-      resolved
-        .then(() => fn())
-        .then(resolve, reject)
-        .then(endJob);
+class Lock {
+  constructor ({ width = 1 } = {}) {
+    this.width = width;
+    this.count = 0;
+    this.awaiters = [];
+  }
+  acquire () {
+    if (this.count < this.width) {
+      this.count++;
+      return Promise.resolve()
     }
-    function endJob () {
-      if (--running < width && waiting.length) {
-        startJob(waiting.shift());
-      }
-      if (running === 0) {
-        listeners.splice(0).map(resolve => resolve());
-      }
+    return new Promise(resolve => this.awaiters.push(resolve))
+  }
+  release () {
+    if (!this.count) return
+    if (this.waiting) {
+      this.awaiters.shift()();
+    } else {
+      this.count--;
+    }
+  }
+  get waiting () {
+    return this.awaiters.length
+  }
+  async exec (fn) {
+    try {
+      await this.acquire();
+      return await Promise.resolve(fn())
+    } finally {
+      this.release();
     }
   }
 }
@@ -128,13 +121,7 @@ function makeArray (obj) {
   return Array.isArray(obj) ? obj : [obj]
 }
 
-const readFile = util.promisify(fs.readFile);
-const appendFile = util.promisify(fs.appendFile);
-const openFile = util.promisify(fs.open);
-const writeFile = util.promisify(fs.writeFile);
-const syncFile = util.promisify(fs.fsync);
-const closeFile = util.promisify(fs.close);
-const renameFile = util.promisify(fs.rename);
+const { readFile, appendFile, open, rename } = fs.promises;
 class Datastore {
   constructor (options) {
     if (typeof options === 'string') options = { filename: options };
@@ -149,25 +136,18 @@ class Datastore {
       ...options
     };
     this.loaded = false;
-    this._queue = new Queue();
-    this._queue.add(
-      () =>
-        new Promise(resolve => {
-          this._starter = resolve;
-        })
-    );
+    this._lock = new Lock();
+    this._lock.acquire();
     this._empty();
     if (options.autoload) this.load();
     if (options.autocompact) this.setAutoCompaction(options.autocompact);
   }
   async load () {
-    if (this.loaded || this.loading) return
-    this.loading = true;
+    if (this.loaded) return
+    this.loaded = true;
     await this._hydrate();
     await this._rewrite();
-    this.loaded = true;
-    this.loading = false;
-    this._starter();
+    this._lock.release();
   }
   reload () {
     return this._execute(() => this._hydrate())
@@ -253,7 +233,7 @@ class Datastore {
     this.autoCompaction = undefined;
   }
   _execute (fn) {
-    return this._queue.add(fn)
+    return this._lock.exec(fn)
   }
   _empty () {
     this._indexes = {
@@ -354,17 +334,16 @@ class Datastore {
       }
       docs.sort(sortOn(sorted));
     }
-    const lines = docs.map(doc => serialize(doc) + '\n');
-    const indexes = Object.values(this._indexes)
+    const lines = Object.values(this._indexes)
       .filter(ix => ix.options.fieldName !== '_id')
       .map(ix => ({ [addIndex]: ix.options }))
+      .concat(docs)
       .map(doc => serialize(doc) + '\n');
-    lines.push(...indexes);
-    const fh = await openFile(temp, 'w');
-    await writeFile(fh, lines.join(''), 'utf8');
-    await syncFile(fh);
-    await closeFile(fh);
-    await renameFile(temp, filename);
+    const fh = await open(temp, 'w');
+    await fh.writeFile(lines.join(''), 'utf8');
+    await fh.sync();
+    await fh.close();
+    await rename(temp, filename);
   }
 }
 class Index {

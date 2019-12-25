@@ -1,9 +1,8 @@
 'use strict'
 
 import fs from 'fs'
-import { promisify } from 'util'
 
-import Queue from './queue'
+import Lock from './lock'
 import { NotExists, KeyViolation, NoIndex } from './errors'
 import {
   getId,
@@ -15,13 +14,7 @@ import {
   makeArray
 } from './util'
 
-const readFile = promisify(fs.readFile)
-const appendFile = promisify(fs.appendFile)
-const openFile = promisify(fs.open)
-const writeFile = promisify(fs.writeFile)
-const syncFile = promisify(fs.fsync)
-const closeFile = promisify(fs.close)
-const renameFile = promisify(fs.rename)
+const { readFile, appendFile, open, rename } = fs.promises
 
 export default class Datastore {
   constructor (options) {
@@ -37,13 +30,8 @@ export default class Datastore {
       ...options
     }
     this.loaded = false
-    this._queue = new Queue()
-    this._queue.add(
-      () =>
-        new Promise(resolve => {
-          this._starter = resolve
-        })
-    )
+    this._lock = new Lock()
+    this._lock.acquire()
     this._empty()
     if (options.autoload) this.load()
     if (options.autocompact) this.setAutoCompaction(options.autocompact)
@@ -52,17 +40,14 @@ export default class Datastore {
   // Loading and compaction
 
   async load () {
-    if (this.loaded || this.loading) return
-    this.loading = true
+    if (this.loaded) return
+    this.loaded = true // or it very soon will be
 
     await this._hydrate()
     await this._rewrite()
 
-    this.loaded = true
-    this.loading = false
-
-    // start the queue
-    this._starter()
+    // release the lock to allow others
+    this._lock.release()
   }
 
   reload () {
@@ -169,7 +154,7 @@ export default class Datastore {
   // PRIVATE API
 
   _execute (fn) {
-    return this._queue.add(fn)
+    return this._lock.exec(fn)
   }
 
   _empty () {
@@ -281,17 +266,16 @@ export default class Datastore {
       }
       docs.sort(sortOn(sorted))
     }
-    const lines = docs.map(doc => serialize(doc) + '\n')
-    const indexes = Object.values(this._indexes)
+    const lines = Object.values(this._indexes)
       .filter(ix => ix.options.fieldName !== '_id')
       .map(ix => ({ [addIndex]: ix.options }))
+      .concat(docs)
       .map(doc => serialize(doc) + '\n')
-    lines.push(...indexes)
-    const fh = await openFile(temp, 'w')
-    await writeFile(fh, lines.join(''), 'utf8')
-    await syncFile(fh)
-    await closeFile(fh)
-    await renameFile(temp, filename)
+    const fh = await open(temp, 'w')
+    await fh.writeFile(lines.join(''), 'utf8')
+    await fh.sync()
+    await fh.close()
+    await rename(temp, filename)
   }
 }
 
