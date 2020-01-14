@@ -2,41 +2,8 @@
 
 function _interopDefault (ex) { return (ex && (typeof ex === 'object') && 'default' in ex) ? ex['default'] : ex; }
 
+var Lock = _interopDefault(require('plock'));
 var fs = _interopDefault(require('fs'));
-
-class Lock {
-  constructor ({ width = 1 } = {}) {
-    this.width = width;
-    this.count = 0;
-    this.awaiters = [];
-  }
-  acquire () {
-    if (this.count < this.width) {
-      this.count++;
-      return Promise.resolve()
-    }
-    return new Promise(resolve => this.awaiters.push(resolve))
-  }
-  release () {
-    if (!this.count) return
-    if (this.waiting) {
-      this.awaiters.shift()();
-    } else {
-      this.count--;
-    }
-  }
-  get waiting () {
-    return this.awaiters.length
-  }
-  async exec (fn) {
-    try {
-      await this.acquire();
-      return await Promise.resolve(fn())
-    } finally {
-      this.release();
-    }
-  }
-}
 
 class DatastoreError extends Error {
   constructor (message) {
@@ -117,14 +84,77 @@ function sortOn (selector) {
     return x < y ? -1 : x > y ? 1 : 0
   }
 }
-function makeArray (obj) {
-  return Array.isArray(obj) ? obj : [obj]
+
+class Index {
+  static create (options) {
+    return new (options.unique ? UniqueIndex : Index)(options)
+  }
+  constructor (options) {
+    this.options = options;
+    this.data = new Map();
+  }
+  find (value) {
+    const docs = this.data.get(value);
+    return docs ? Array.from(docs) : []
+  }
+  findOne (value) {
+    const docs = this.data.get(value);
+    return docs ? docs.values().next().value : undefined
+  }
+  addDoc (doc) {
+    const value = delve(doc, this.options.fieldName);
+    if (Array.isArray(value)) {
+      value.forEach(v => this.linkValueToDoc(v, doc));
+    } else {
+      this.linkValueToDoc(value, doc);
+    }
+  }
+  removeDoc (doc) {
+    const value = delve(doc, this.options.fieldName);
+    if (Array.isArray(value)) {
+      value.forEach(v => this.unlinkValueFromDoc(v, doc));
+    } else {
+      this.unlinkValueFromDoc(value, doc);
+    }
+  }
+  linkValueToDoc (value, doc) {
+    if (value == null && this.options.sparse) return
+    const docs = this.data.get(value);
+    if (docs) {
+      docs.add(doc);
+    } else {
+      this.data.set(value, new Set([doc]));
+    }
+  }
+  unlinkValueFromDoc (value, doc) {
+    const docs = this.data.get(value);
+    if (!docs) return
+    docs.delete(doc);
+    if (!docs.size) this.data.delete(value);
+  }
+}
+class UniqueIndex extends Index {
+  findOne (value) {
+    return this.data.get(value)
+  }
+  find (value) {
+    return this.findOne(value)
+  }
+  linkValueToDoc (value, doc) {
+    if (value == null && this.options.sparse) return
+    if (this.data.has(value)) {
+      throw new KeyViolation(doc, this.options.fieldName)
+    }
+    this.data.set(value, doc);
+  }
+  unlinkValueFromDoc (value, doc) {
+    if (this.data.get(value) === doc) this.data.delete(value);
+  }
 }
 
 const { readFile, appendFile, open, rename } = fs.promises;
 class Datastore {
   constructor (options) {
-    if (typeof options === 'string') options = { filename: options };
     this.options = {
       serialize: stringify,
       deserialize: parse,
@@ -135,206 +165,148 @@ class Datastore {
       },
       ...options
     };
-    this.loaded = false;
-    this._lock = new Lock();
-    this._lock.acquire();
-    this._empty();
-    if (options.autoload) this.load();
-    if (options.autocompact) this.setAutoCompaction(options.autocompact);
+    this.empty();
   }
-  async load () {
-    if (this.loaded) return
-    this.loaded = true;
-    await this._hydrate();
-    await this._rewrite();
-    this._lock.release();
-  }
-  reload () {
-    return this._execute(() => this._hydrate())
-  }
-  compact (opts) {
-    return this._execute(() => this._rewrite(opts))
-  }
-  getAll () {
-    return this._execute(() => this._getAll())
-  }
-  async insert (doc) {
-    return this._execute(async () => {
-      doc = this._upsertDoc(doc, { mustNotExist: true });
-      await this._append(doc);
-      return doc
-    })
-  }
-  async update (doc) {
-    return this._execute(async () => {
-      doc = this._upsertDoc(doc, { mustExist: true });
-      await this._append(doc);
-      return doc
-    })
-  }
-  async upsert (doc) {
-    return this._execute(async () => {
-      doc = this._upsertDoc(doc);
-      await this._append(doc);
-      return doc
-    })
-  }
-  async delete (doc) {
-    const { deleted } = this.options.special;
-    return this._execute(async () => {
-      doc = this._deleteDoc(doc);
-      const docs = makeArray(doc).map(d => ({ [deleted]: d }));
-      await this._append(docs);
-      return doc
-    })
+  empty () {
+    this.indexes = {
+      _id: Index.create({ fieldName: '_id', unique: true })
+    };
   }
   async ensureIndex (options) {
     const { fieldName } = options;
     const { addIndex } = this.options.special;
-    if (this._indexes[fieldName]) return
-    return this._execute(() => {
-      this._addIndex(options);
-      return this._append({ [addIndex]: options })
-    })
+    if (this.hasIndex(fieldName)) return
+    this.addIndex(options);
+    await this.append([{ [addIndex]: options }]);
   }
   async deleteIndex (fieldName) {
-    if (fieldName === '_id') return
     const { deleteIndex } = this.options.special;
-    return this._execute(() => {
-      this._deleteIndex(fieldName);
-      return this._append({ [deleteIndex]: { fieldName } })
-    })
+    if (fieldName === '_id') return
+    if (!this.hasIndex(fieldName)) throw new NoIndex(fieldName)
+    this.removeIndex(fieldName);
+    await this.append([{ [deleteIndex]: { fieldName } }]);
+  }
+  addIndex (options) {
+    const { fieldName } = options;
+    const ix = Index.create(options);
+    this.allDocs().forEach(doc => ix.addDoc(doc));
+    this.indexes[fieldName] = ix;
+  }
+  removeIndex (fieldName) {
+    delete this.indexes[fieldName];
+  }
+  hasIndex (fieldName) {
+    return Boolean(this.indexes[fieldName])
   }
   find (fieldName, value) {
-    return this._execute(async () => {
-      if (!this._indexes[fieldName]) throw new NoIndex(fieldName)
-      return this._indexes[fieldName].find(value)
-    })
+    if (!this.hasIndex(fieldName)) throw new NoIndex(fieldName)
+    return this.indexes[fieldName].find(value)
   }
   findOne (fieldName, value) {
-    return this._execute(async () => {
-      if (!this._indexes[fieldName]) throw new NoIndex(fieldName)
-      return this._indexes[fieldName].findOne(value)
-    })
+    if (!this.hasIndex(fieldName)) throw new NoIndex(fieldName)
+    return this.indexes[fieldName].findOne(value)
   }
-  findAll (fieldName) {
-    return this._execute(async () => {
-      if (!this._indexes[fieldName]) throw new NoIndex(fieldName)
-      return this._indexes[fieldName].findAll()
-    })
+  async upsert (docOrDocs, options) {
+    let ret;
+    let docs;
+    if (Array.isArray(docOrDocs)) {
+      ret = docOrDocs.map(doc => this.addDoc(doc, options));
+      docs = ret;
+    } else {
+      ret = this.addDoc(docOrDocs, options);
+      docs = [ret];
+    }
+    await this.append(docs);
+    return ret
   }
-  setAutoCompaction (interval, opts) {
-    this.stopAutoCompaction();
-    this.autoCompaction = setInterval(() => this.compact(opts), interval);
+  async delete (docOrDocs) {
+    let ret;
+    let docs;
+    const { deleted } = this.options.special;
+    if (Array.isArray(docOrDocs)) {
+      ret = docOrDocs.map(doc => this.removeDoc(doc));
+      docs = ret;
+    } else {
+      ret = this.removeDoc(docOrDocs);
+      docs = [ret];
+    }
+    docs = docs.map(doc => ({ [deleted]: doc }));
+    await this.append(docs);
+    return ret
   }
-  stopAutoCompaction () {
-    if (!this.autoCompaction) return
-    clearInterval(this.autoCompaction);
-    this.autoCompaction = undefined;
-  }
-  _execute (fn) {
-    return this._lock.exec(fn)
-  }
-  _empty () {
-    this._indexes = {
-      _id: Index.create({ fieldName: '_id', unique: true })
+  addDoc (doc, { mustExist = false, mustNotExist = false } = {}) {
+    const { _id, ...rest } = doc;
+    const olddoc = this.findOne('_id', _id);
+    if (!olddoc && mustExist) throw new NotExists(doc)
+    if (olddoc && mustNotExist) throw new KeyViolation(doc, '_id')
+    doc = {
+      _id: _id || getId(doc, this.indexes._id.data),
+      ...cleanObject(rest)
     };
+    const ixs = Object.values(this.indexes);
+    try {
+      ixs.forEach(ix => {
+        if (olddoc) ix.removeDoc(olddoc);
+        ix.addDoc(doc);
+      });
+      return doc
+    } catch (err) {
+      ixs.forEach(ix => {
+        ix.removeDoc(doc);
+        if (olddoc) {
+          ix.removeDoc(olddoc);
+          ix.addDoc(olddoc);
+        }
+      });
+      throw err
+    }
   }
-  async _hydrate () {
+  removeDoc (doc) {
+    const ixs = Object.values(this.indexes);
+    const olddoc = this.findOne('_id', doc._id);
+    if (!olddoc) throw new NotExists(doc)
+    ixs.forEach(ix => ix.removeDoc(olddoc));
+    return olddoc
+  }
+  allDocs () {
+    return Array.from(this.indexes._id.data.values())
+  }
+  async hydrate () {
     const {
       filename,
       deserialize,
       special: { deleted, addIndex, deleteIndex }
     } = this.options;
     const data = await readFile(filename, { encoding: 'utf8', flag: 'a+' });
-    this._empty();
+    this.empty();
     for (const line of data.split(/\n/).filter(Boolean)) {
       const doc = deserialize(line);
       if (addIndex in doc) {
-        this._addIndex(doc[addIndex]);
+        this.addIndex(doc[addIndex]);
       } else if (deleteIndex in doc) {
-        this._deleteIndex(doc[deleteIndex].fieldName);
+        this.deleteIndex(doc[deleteIndex].fieldName);
       } else if (deleted in doc) {
-        this._deleteDoc(doc[deleted]);
+        this.removeDoc(doc[deleted]);
       } else {
-        this._upsertDoc(doc);
+        this.addDoc(doc);
       }
     }
   }
-  _getAll () {
-    return Array.from(this._indexes._id.data.values())
-  }
-  _addIndex (options) {
-    const { fieldName } = options;
-    const ix = Index.create(options);
-    this._getAll().forEach(doc => ix.insertDoc(doc));
-    this._indexes[fieldName] = ix;
-  }
-  _deleteIndex (fieldName) {
-    delete this._indexes[fieldName];
-  }
-  _upsertDoc (doc, opts = {}) {
-    if (Array.isArray(doc)) {
-      return doc.map(d => this._upsertDoc(d, opts))
-    }
-    const { mustExist = false, mustNotExist = false } = opts;
-    const olddoc = this._indexes._id.find(doc._id);
-    if (!olddoc && mustExist) throw new NotExists(doc)
-    if (olddoc && mustNotExist) throw new KeyViolation(doc, '_id')
-    doc = cleanObject(doc);
-    if (doc._id == null) {
-      const _id = getId(doc, this._indexes._id.data);
-      doc = { _id, ...doc };
-    }
-    const ixs = Object.values(this._indexes);
-    try {
-      ixs.forEach(ix => {
-        if (olddoc) ix.deleteDoc(olddoc);
-        ix.insertDoc(doc);
-      });
-      return doc
-    } catch (err) {
-      ixs.forEach(ix => {
-        ix.deleteDoc(doc);
-        if (olddoc) {
-          ix.deleteDoc(olddoc);
-          ix.insertDoc(olddoc);
-        }
-      });
-      throw err
-    }
-  }
-  _deleteDoc (doc) {
-    if (Array.isArray(doc)) {
-      return doc.map(doc => this._deleteDoc(doc))
-    }
-    const ixs = Object.values(this._indexes);
-    const olddoc = this._indexes._id.find(doc._id);
-    if (!olddoc) throw new NotExists(doc)
-    ixs.forEach(ix => ix.deleteDoc(olddoc));
-    return olddoc
-  }
-  async _append (doc) {
-    const { filename, serialize } = this.options;
-    const docs = makeArray(doc);
-    const lines = docs.map(d => serialize(d) + '\n').join('');
-    await appendFile(filename, lines, 'utf8');
-  }
-  async _rewrite ({ sorted = false } = {}) {
+  async rewrite ({ sorted = false } = {}) {
     const {
       filename,
       serialize,
       special: { addIndex }
     } = this.options;
     const temp = filename + '~';
-    const docs = this._getAll();
+    const docs = this.allDocs();
     if (sorted) {
       if (typeof sorted !== 'string' && typeof sorted !== 'function') {
         sorted = '_id';
       }
       docs.sort(sortOn(sorted));
     }
-    const lines = Object.values(this._indexes)
+    const lines = Object.values(this.indexes)
       .filter(ix => ix.options.fieldName !== '_id')
       .map(ix => ({ [addIndex]: ix.options }))
       .concat(docs)
@@ -345,76 +317,94 @@ class Datastore {
     await fh.close();
     await rename(temp, filename);
   }
-}
-class Index {
-  static create (options) {
-    return new (options.unique ? UniqueIndex : Index)(options)
+  async append (docs) {
+    const { filename, serialize } = this.options;
+    const lines = docs.map(doc => serialize(doc) + '\n').join('');
+    await appendFile(filename, lines, 'utf8');
   }
+}
+
+class Database {
   constructor (options) {
-    this.options = options;
-    this.data = new Map();
+    if (typeof options === 'string') options = { filename: options };
+    if (!options) throw new TypeError('No options given')
+    this.loaded = false;
+    const lock = new Lock();
+    Object.defineProperties(this, {
+      _ds: {
+        value: new Datastore(options),
+        configurable: true
+      },
+      _lock: {
+        value: lock,
+        configurable: true
+      },
+      _execute: {
+        value: lock.exec.bind(lock),
+        configurable: true
+      },
+      _autoCompaction: {
+        value: undefined,
+        configurable: true,
+        writable: true
+      }
+    });
+    this._lock.acquire();
+    if (options.autoload) this.load();
+    if (options.autocompact) this.setAutoCompaction(options.autocompact);
   }
-  find (value) {
-    return this.data.get(value) || []
+  async load () {
+    if (this.loaded) return
+    this.loaded = true;
+    await this._ds.hydrate();
+    await this._ds.rewrite();
+    this._lock.release();
   }
-  findOne (value) {
-    const list = this.data.get(value);
-    return list ? list[0] : undefined
+  reload () {
+    return this._execute(() => this._ds.hydrate())
   }
-  findAll () {
-    return Array.from(this.data.entries())
+  compact (opts) {
+    return this._execute(() => this._ds.rewrite(opts))
   }
-  addLink (key, doc) {
-    let list = this.data.get(key);
-    if (!list) {
-      list = [];
-      this.data.set(key, list);
-    }
-    if (!list.includes(doc)) list.push(doc);
+  ensureIndex (options) {
+    return this._execute(() => this._ds.ensureIndex(options))
   }
-  removeLink (key, doc) {
-    const list = this.data.get(key) || [];
-    const index = list.indexOf(doc);
-    if (index === -1) return
-    list.splice(index, 1);
-    if (!list.length) this.data.delete(key);
+  deleteIndex (fieldName) {
+    return this._execute(() => this._ds.deleteIndex(fieldName))
   }
-  insertDoc (doc) {
-    const key = delve(doc, this.options.fieldName);
-    if (key == null && this.options.sparse) return
-    if (Array.isArray(key)) {
-      key.forEach(key => this.addLink(key, doc));
-    } else {
-      this.addLink(key, doc);
-    }
+  insert (docOrDocs) {
+    return this._execute(() =>
+      this._ds.upsert(docOrDocs, { mustNotExist: true })
+    )
   }
-  deleteDoc (doc) {
-    const key = delve(doc, this.options.fieldName);
-    if (Array.isArray(key)) {
-      key.forEach(key => this.removeLink(key, doc));
-    } else {
-      this.removeLink(key, doc);
-    }
+  update (docOrDocs) {
+    return this._execute(() => this._ds.upsert(docOrDocs, { mustExist: true }))
+  }
+  upsert (docOrDocs) {
+    return this._execute(() => this._ds.upsert(docOrDocs))
+  }
+  delete (docOrDocs) {
+    return this._execute(() => this._ds.delete(docOrDocs))
+  }
+  getAll () {
+    return this._execute(async () => this._ds.allDocs())
+  }
+  find (fieldName, value) {
+    return this._execute(async () => this._ds.find(fieldName, value))
+  }
+  findOne (fieldName, value) {
+    return this._execute(async () => this._ds.findOne(fieldName, value))
+  }
+  setAutoCompaction (interval, opts) {
+    this.stopAutoCompaction();
+    this._autoCompaction = setInterval(() => this.compact(opts), interval);
+  }
+  stopAutoCompaction () {
+    if (!this._autoCompaction) return
+    clearInterval(this._autoCompaction);
+    this._autoCompaction = undefined;
   }
 }
-class UniqueIndex extends Index {
-  find (value) {
-    return this.data.get(value)
-  }
-  findOne (value) {
-    return this.find(value)
-  }
-  addLink (key, doc) {
-    if (this.data.has(key)) {
-      throw new KeyViolation(doc, this.options.fieldName)
-    }
-    this.data.set(key, doc);
-  }
-  removeLink (key, doc) {
-    if (this.data.get(key) === doc) this.data.delete(key);
-  }
-}
+Object.assign(Database, { KeyViolation, NotExists, NoIndex });
 
-Object.assign(Datastore, { KeyViolation, NotExists, NoIndex });
-
-module.exports = Datastore;
+module.exports = Database;

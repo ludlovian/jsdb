@@ -1,6 +1,6 @@
 'use strict'
 import test from 'ava'
-import Datastore from '../src'
+import Database from '../src'
 import fs from 'fs'
 import { promisify } from 'util'
 import { exec as _exec } from 'child_process'
@@ -32,7 +32,7 @@ test.afterEach(async t => {
 })
 
 test('basic', async t => {
-  const db = new Datastore({
+  const db = new Database({
     filename: t.context.file,
     autoload: true
   })
@@ -44,7 +44,7 @@ test('basic', async t => {
 })
 
 test('delayed load', async t => {
-  const db = new Datastore({
+  const db = new Database({
     filename: t.context.file
   })
   db.insert({ _id: 1, foo: 'bar', ignoreThis: undefined })
@@ -56,14 +56,14 @@ test('delayed load', async t => {
 })
 
 test('full activity', async t => {
-  let db = new Datastore(t.context.file)
+  let db = new Database(t.context.file)
   const date = new Date(2018, 0, 19, 12, 34, 56)
   await db.load()
   await db.insert({ _id: 1, foo: 'bar', date })
   let r
   r = await db.find('_id', 1)
   t.is(r.foo, 'bar')
-  r = await db.find('_id', 1)
+  r = await db.findOne('_id', 1)
   t.is(r.foo, 'bar')
   t.is(r.date, date)
 
@@ -90,7 +90,7 @@ test('full activity', async t => {
 
   t.snapshot(await readFile(t.context.file, 'utf8'))
 
-  db = new Datastore(t.context.file)
+  db = new Database(t.context.file)
   await db.load()
 
   await db.ensureIndex({ fieldName: 'foo', sparse: true })
@@ -98,13 +98,12 @@ test('full activity', async t => {
 
   await db.insert({ noId: true })
   t.is((await db.getAll()).length, 2)
-  t.is((await db.findAll('_id')).length, 2)
 
   t.snapshot(await readFile(t.context.file, 'utf8'))
 })
 
 test('generated id', async t => {
-  const db = new Datastore({
+  const db = new Database({
     filename: t.context.file,
     autoload: true
   })
@@ -119,7 +118,7 @@ test('generated id', async t => {
 })
 
 test('reload', async t => {
-  const db = new Datastore(t.context.file)
+  const db = new Database(t.context.file)
   await db.load()
   await db.insert({ _id: 1, foo: 'bar' })
 
@@ -132,7 +131,7 @@ test('reload', async t => {
 })
 
 test('empty data', async t => {
-  const db = new Datastore(t.context.file)
+  const db = new Database(t.context.file)
   await db.load()
   t.is(await db.findOne('_id', 1), undefined)
   t.is(await db.find('_id', 1), undefined)
@@ -142,7 +141,7 @@ test('empty data', async t => {
 })
 
 test('array indexes', async t => {
-  const db = new Datastore(t.context.file)
+  const db = new Database(t.context.file)
   await db.load()
   await db.ensureIndex({ fieldName: 'foo' })
   await db.insert({ _id: 1, foo: ['bar', 'baz'] })
@@ -158,7 +157,7 @@ test('array indexes', async t => {
 })
 
 test('sparse indexes', async t => {
-  const db = new Datastore(t.context.file)
+  const db = new Database(t.context.file)
   await db.load()
   await db.ensureIndex({ fieldName: 'foo', unique: true, sparse: true })
   await db.insert({ _id: 1, hasFoo: false })
@@ -175,7 +174,9 @@ test('sparse indexes', async t => {
 })
 
 test('errors', async t => {
-  const db = new Datastore(t.context.file)
+  t.throws(() => new Database())
+
+  const db = new Database(t.context.file)
   await db.load()
   await t.throwsAsync(() => db.delete({ _id: 1 }))
   await t.throwsAsync(() => db.update({ _id: 1 }))
@@ -193,11 +194,12 @@ test('errors', async t => {
 
   await t.throwsAsync(() => db.find('quux', 'l33t'))
   await t.throwsAsync(() => db.findOne('quux', 'l33t'))
-  await t.throwsAsync(() => db.findAll('quux'))
+
+  await t.throwsAsync(() => db.deleteIndex('quux'))
 })
 
 test('auto compaction', async t => {
-  const db = new Datastore({
+  const db = new Database({
     filename: t.context.file,
     autocompact: 500
   })
@@ -212,7 +214,7 @@ test('auto compaction', async t => {
 })
 
 test('sorted', async t => {
-  const db = new Datastore(t.context.file)
+  const db = new Database(t.context.file)
   await db.load()
   await db.insert({ _id: 'foo', age: 1, name: 'ping' })
   await db.insert({ _id: 'bar', age: 2, name: 'pong' })
@@ -235,7 +237,7 @@ test('sorted', async t => {
 })
 
 test('upsert', async t => {
-  const db = new Datastore(t.context.file)
+  const db = new Database(t.context.file)
   await db.load()
   await db.upsert({ _id: 'foo', bar: 'baz' })
 
@@ -249,7 +251,7 @@ test('upsert', async t => {
 })
 
 test('mulit-row ops', async t => {
-  const db = new Datastore(t.context.file)
+  const db = new Database(t.context.file)
   await db.load()
   let rows = [{ name: 'foo', num: 1 }, { name: 'bar', num: 2 }]
   rows = await db.insert(rows)
@@ -265,4 +267,28 @@ test('mulit-row ops', async t => {
   await db.delete(rows)
   rows = await db.getAll()
   t.is(0, rows.length)
+})
+
+test('many-to-many indexes', async t => {
+  const db = new Database(t.context.file)
+  await db.load()
+  await db.insert([
+    { foo: ['bar', 'baz'], quux: 10 },
+    { foo: ['baz', 'bar'], quux: 20 }
+  ])
+  await db.ensureIndex({ fieldName: 'foo' })
+
+  let rows = await db.find('foo', 'bar')
+  t.is(rows.length, 2)
+  t.deepEqual(rows.map(row => row.quux).sort(), [10, 20])
+
+  rows = await db.find('foo', 'baz')
+  t.is(rows.length, 2)
+  t.deepEqual(rows.map(row => row.quux).sort(), [10, 20])
+
+  await db.delete(rows[0])
+  await db.delete(rows[1])
+
+  rows = await db.find('foo', 'bar')
+  t.is(rows.length, 0)
 })

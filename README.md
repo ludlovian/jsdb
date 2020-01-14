@@ -15,11 +15,13 @@ Inspired by the execellent [nedb](https://www.npmjs.com/package/nedb) module, bu
 
 Only for my own use. Don't use it. Use nedb instead
 
+NOTE: `findAll` has been removed
+
 ## API
 
-### Datastore
+### Database
 
-`db = new Datastore(filename | options)`
+`db = new Database(filename | options)`
 
 Where options are
 
@@ -42,9 +44,9 @@ Ensures an index is in place.
 A `sparse` index will not index null-ish values
 A `unique` index will barf on non-unique values
 
-### .removeIndex
+### .deleteIndex
 
-`db.removeIndex(fieldName)`
+`db.deleteIndex(fieldName)`
 
 removes the index
 
@@ -89,15 +91,6 @@ Returns a list of the matching docs which can be empty. Unique indices act like 
 `matching = await db.findOne(<indexFieldName>, <value>)`
 
 Returns the first matching doc, or `undefined`
-
-### .findAll
-
-`allIndexedDocs = await db.findAll(<indexFieldName>)`
-
-returns an array of `[key, [matchingDocs]]` for the index.
-
-Unique indices return an array of `[key, doc]`
-
 
 ### .compact
 

@@ -1,24 +1,13 @@
-'use strict'
-
 import fs from 'fs'
 
-import Lock from './lock'
 import { NotExists, KeyViolation, NoIndex } from './errors'
-import {
-  getId,
-  cleanObject,
-  parse,
-  stringify,
-  delve,
-  sortOn,
-  makeArray
-} from './util'
+import { getId, cleanObject, parse, stringify, sortOn } from './util'
+import Index from './dbindex'
 
 const { readFile, appendFile, open, rename } = fs.promises
 
 export default class Datastore {
   constructor (options) {
-    if (typeof options === 'string') options = { filename: options }
     this.options = {
       serialize: stringify,
       deserialize: parse,
@@ -29,141 +18,132 @@ export default class Datastore {
       },
       ...options
     }
-    this.loaded = false
-    this._lock = new Lock()
-    this._lock.acquire()
-    this._empty()
-    if (options.autoload) this.load()
-    if (options.autocompact) this.setAutoCompaction(options.autocompact)
+
+    this.empty()
   }
 
-  // Loading and compaction
-
-  async load () {
-    if (this.loaded) return
-    this.loaded = true // or it very soon will be
-
-    await this._hydrate()
-    await this._rewrite()
-
-    // release the lock to allow others
-    this._lock.release()
-  }
-
-  reload () {
-    return this._execute(() => this._hydrate())
-  }
-
-  compact (opts) {
-    return this._execute(() => this._rewrite(opts))
-  }
-
-  // Data modification
-
-  getAll () {
-    return this._execute(() => this._getAll())
-  }
-
-  async insert (doc) {
-    return this._execute(async () => {
-      doc = this._upsertDoc(doc, { mustNotExist: true })
-      await this._append(doc)
-      return doc
-    })
-  }
-
-  async update (doc) {
-    return this._execute(async () => {
-      doc = this._upsertDoc(doc, { mustExist: true })
-      await this._append(doc)
-      return doc
-    })
-  }
-
-  async upsert (doc) {
-    return this._execute(async () => {
-      doc = this._upsertDoc(doc)
-      await this._append(doc)
-      return doc
-    })
-  }
-
-  async delete (doc) {
-    const { deleted } = this.options.special
-    return this._execute(async () => {
-      doc = this._deleteDoc(doc)
-      const docs = makeArray(doc).map(d => ({ [deleted]: d }))
-      await this._append(docs)
-      return doc
-    })
-  }
-
-  // Indexes
-
-  async ensureIndex (options) {
-    const { fieldName } = options
-    const { addIndex } = this.options.special
-    if (this._indexes[fieldName]) return
-    return this._execute(() => {
-      this._addIndex(options)
-      return this._append({ [addIndex]: options })
-    })
-  }
-
-  async deleteIndex (fieldName) {
-    if (fieldName === '_id') return
-    const { deleteIndex } = this.options.special
-    return this._execute(() => {
-      this._deleteIndex(fieldName)
-      return this._append({ [deleteIndex]: { fieldName } })
-    })
-  }
-
-  find (fieldName, value) {
-    return this._execute(async () => {
-      if (!this._indexes[fieldName]) throw new NoIndex(fieldName)
-      return this._indexes[fieldName].find(value)
-    })
-  }
-
-  findOne (fieldName, value) {
-    return this._execute(async () => {
-      if (!this._indexes[fieldName]) throw new NoIndex(fieldName)
-      return this._indexes[fieldName].findOne(value)
-    })
-  }
-
-  findAll (fieldName) {
-    return this._execute(async () => {
-      if (!this._indexes[fieldName]) throw new NoIndex(fieldName)
-      return this._indexes[fieldName].findAll()
-    })
-  }
-
-  setAutoCompaction (interval, opts) {
-    this.stopAutoCompaction()
-    this.autoCompaction = setInterval(() => this.compact(opts), interval)
-  }
-
-  stopAutoCompaction () {
-    if (!this.autoCompaction) return
-    clearInterval(this.autoCompaction)
-    this.autoCompaction = undefined
-  }
-
-  // PRIVATE API
-
-  _execute (fn) {
-    return this._lock.exec(fn)
-  }
-
-  _empty () {
-    this._indexes = {
+  empty () {
+    this.indexes = {
       _id: Index.create({ fieldName: '_id', unique: true })
     }
   }
 
-  async _hydrate () {
+  async ensureIndex (options) {
+    const { fieldName } = options
+    const { addIndex } = this.options.special
+    if (this.hasIndex(fieldName)) return
+    this.addIndex(options)
+    await this.append([{ [addIndex]: options }])
+  }
+
+  async deleteIndex (fieldName) {
+    const { deleteIndex } = this.options.special
+    if (fieldName === '_id') return
+    if (!this.hasIndex(fieldName)) throw new NoIndex(fieldName)
+    this.removeIndex(fieldName)
+    await this.append([{ [deleteIndex]: { fieldName } }])
+  }
+
+  addIndex (options) {
+    const { fieldName } = options
+    const ix = Index.create(options)
+    this.allDocs().forEach(doc => ix.addDoc(doc))
+    this.indexes[fieldName] = ix
+  }
+
+  removeIndex (fieldName) {
+    delete this.indexes[fieldName]
+  }
+
+  hasIndex (fieldName) {
+    return Boolean(this.indexes[fieldName])
+  }
+
+  find (fieldName, value) {
+    if (!this.hasIndex(fieldName)) throw new NoIndex(fieldName)
+    return this.indexes[fieldName].find(value)
+  }
+
+  findOne (fieldName, value) {
+    if (!this.hasIndex(fieldName)) throw new NoIndex(fieldName)
+    return this.indexes[fieldName].findOne(value)
+  }
+
+  async upsert (docOrDocs, options) {
+    let ret
+    let docs
+    if (Array.isArray(docOrDocs)) {
+      ret = docOrDocs.map(doc => this.addDoc(doc, options))
+      docs = ret
+    } else {
+      ret = this.addDoc(docOrDocs, options)
+      docs = [ret]
+    }
+    await this.append(docs)
+    return ret
+  }
+
+  async delete (docOrDocs) {
+    let ret
+    let docs
+    const { deleted } = this.options.special
+    if (Array.isArray(docOrDocs)) {
+      ret = docOrDocs.map(doc => this.removeDoc(doc))
+      docs = ret
+    } else {
+      ret = this.removeDoc(docOrDocs)
+      docs = [ret]
+    }
+    docs = docs.map(doc => ({ [deleted]: doc }))
+    await this.append(docs)
+    return ret
+  }
+
+  addDoc (doc, { mustExist = false, mustNotExist = false } = {}) {
+    const { _id, ...rest } = doc
+    const olddoc = this.findOne('_id', _id)
+    if (!olddoc && mustExist) throw new NotExists(doc)
+    if (olddoc && mustNotExist) throw new KeyViolation(doc, '_id')
+
+    doc = {
+      _id: _id || getId(doc, this.indexes._id.data),
+      ...cleanObject(rest)
+    }
+
+    const ixs = Object.values(this.indexes)
+    try {
+      ixs.forEach(ix => {
+        if (olddoc) ix.removeDoc(olddoc)
+        ix.addDoc(doc)
+      })
+      return doc
+    } catch (err) {
+      // to rollback, we remove the new doc from each index. If there is
+      // an old one, then we remove that (just in case) and re-add
+      ixs.forEach(ix => {
+        ix.removeDoc(doc)
+        if (olddoc) {
+          ix.removeDoc(olddoc)
+          ix.addDoc(olddoc)
+        }
+      })
+      throw err
+    }
+  }
+
+  removeDoc (doc) {
+    const ixs = Object.values(this.indexes)
+    const olddoc = this.findOne('_id', doc._id)
+    if (!olddoc) throw new NotExists(doc)
+    ixs.forEach(ix => ix.removeDoc(olddoc))
+    return olddoc
+  }
+
+  allDocs () {
+    return Array.from(this.indexes._id.data.values())
+  }
+
+  async hydrate () {
     const {
       filename,
       deserialize,
@@ -172,101 +152,36 @@ export default class Datastore {
 
     const data = await readFile(filename, { encoding: 'utf8', flag: 'a+' })
 
-    this._empty()
+    this.empty()
     for (const line of data.split(/\n/).filter(Boolean)) {
       const doc = deserialize(line)
       if (addIndex in doc) {
-        this._addIndex(doc[addIndex])
+        this.addIndex(doc[addIndex])
       } else if (deleteIndex in doc) {
-        this._deleteIndex(doc[deleteIndex].fieldName)
+        this.deleteIndex(doc[deleteIndex].fieldName)
       } else if (deleted in doc) {
-        this._deleteDoc(doc[deleted])
+        this.removeDoc(doc[deleted])
       } else {
-        this._upsertDoc(doc)
+        this.addDoc(doc)
       }
     }
   }
 
-  _getAll () {
-    return Array.from(this._indexes._id.data.values())
-  }
-
-  _addIndex (options) {
-    const { fieldName } = options
-    const ix = Index.create(options)
-    this._getAll().forEach(doc => ix.insertDoc(doc))
-    this._indexes[fieldName] = ix
-  }
-
-  _deleteIndex (fieldName) {
-    delete this._indexes[fieldName]
-  }
-
-  _upsertDoc (doc, opts = {}) {
-    if (Array.isArray(doc)) {
-      return doc.map(d => this._upsertDoc(d, opts))
-    }
-    const { mustExist = false, mustNotExist = false } = opts
-    const olddoc = this._indexes._id.find(doc._id)
-    if (!olddoc && mustExist) throw new NotExists(doc)
-    if (olddoc && mustNotExist) throw new KeyViolation(doc, '_id')
-    doc = cleanObject(doc)
-    if (doc._id == null) {
-      const _id = getId(doc, this._indexes._id.data)
-      doc = { _id, ...doc }
-    }
-    const ixs = Object.values(this._indexes)
-    try {
-      ixs.forEach(ix => {
-        if (olddoc) ix.deleteDoc(olddoc)
-        ix.insertDoc(doc)
-      })
-      return doc
-    } catch (err) {
-      ixs.forEach(ix => {
-        ix.deleteDoc(doc)
-        if (olddoc) {
-          ix.deleteDoc(olddoc)
-          ix.insertDoc(olddoc)
-        }
-      })
-      throw err
-    }
-  }
-
-  _deleteDoc (doc) {
-    if (Array.isArray(doc)) {
-      return doc.map(doc => this._deleteDoc(doc))
-    }
-    const ixs = Object.values(this._indexes)
-    const olddoc = this._indexes._id.find(doc._id)
-    if (!olddoc) throw new NotExists(doc)
-    ixs.forEach(ix => ix.deleteDoc(olddoc))
-    return olddoc
-  }
-
-  async _append (doc) {
-    const { filename, serialize } = this.options
-    const docs = makeArray(doc)
-    const lines = docs.map(d => serialize(d) + '\n').join('')
-    await appendFile(filename, lines, 'utf8')
-  }
-
-  async _rewrite ({ sorted = false } = {}) {
+  async rewrite ({ sorted = false } = {}) {
     const {
       filename,
       serialize,
       special: { addIndex }
     } = this.options
     const temp = filename + '~'
-    const docs = this._getAll()
+    const docs = this.allDocs()
     if (sorted) {
       if (typeof sorted !== 'string' && typeof sorted !== 'function') {
         sorted = '_id'
       }
       docs.sort(sortOn(sorted))
     }
-    const lines = Object.values(this._indexes)
+    const lines = Object.values(this.indexes)
       .filter(ix => ix.options.fieldName !== '_id')
       .map(ix => ({ [addIndex]: ix.options }))
       .concat(docs)
@@ -277,85 +192,10 @@ export default class Datastore {
     await fh.close()
     await rename(temp, filename)
   }
-}
 
-class Index {
-  static create (options) {
-    return new (options.unique ? UniqueIndex : Index)(options)
-  }
-
-  constructor (options) {
-    this.options = options
-    this.data = new Map()
-  }
-
-  find (value) {
-    return this.data.get(value) || []
-  }
-
-  findOne (value) {
-    const list = this.data.get(value)
-    return list ? list[0] : undefined
-  }
-
-  findAll () {
-    return Array.from(this.data.entries())
-  }
-
-  addLink (key, doc) {
-    let list = this.data.get(key)
-    if (!list) {
-      list = []
-      this.data.set(key, list)
-    }
-    if (!list.includes(doc)) list.push(doc)
-  }
-
-  removeLink (key, doc) {
-    const list = this.data.get(key) || []
-    const index = list.indexOf(doc)
-    if (index === -1) return
-    list.splice(index, 1)
-    if (!list.length) this.data.delete(key)
-  }
-
-  insertDoc (doc) {
-    const key = delve(doc, this.options.fieldName)
-    if (key == null && this.options.sparse) return
-    if (Array.isArray(key)) {
-      key.forEach(key => this.addLink(key, doc))
-    } else {
-      this.addLink(key, doc)
-    }
-  }
-
-  deleteDoc (doc) {
-    const key = delve(doc, this.options.fieldName)
-    if (Array.isArray(key)) {
-      key.forEach(key => this.removeLink(key, doc))
-    } else {
-      this.removeLink(key, doc)
-    }
-  }
-}
-
-class UniqueIndex extends Index {
-  find (value) {
-    return this.data.get(value)
-  }
-
-  findOne (value) {
-    return this.find(value)
-  }
-
-  addLink (key, doc) {
-    if (this.data.has(key)) {
-      throw new KeyViolation(doc, this.options.fieldName)
-    }
-    this.data.set(key, doc)
-  }
-
-  removeLink (key, doc) {
-    if (this.data.get(key) === doc) this.data.delete(key)
+  async append (docs) {
+    const { filename, serialize } = this.options
+    const lines = docs.map(doc => serialize(doc) + '\n').join('')
+    await appendFile(filename, lines, 'utf8')
   }
 }
