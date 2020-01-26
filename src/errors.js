@@ -1,16 +1,16 @@
 'use strict'
 
 export class DatastoreError extends Error {
-  constructor (message) {
+  constructor (name, message) {
     super(message)
-    this.name = this.constructor.name
+    this.name = name
     Error.captureStackTrace(this, this.constructor)
   }
 }
 
 export class KeyViolation extends DatastoreError {
   constructor (doc, fieldName) {
-    super('Key violation error')
+    super('KeyViolation', 'Key violation error')
     this.fieldName = fieldName
     this.record = doc
   }
@@ -18,14 +18,14 @@ export class KeyViolation extends DatastoreError {
 
 export class NotExists extends DatastoreError {
   constructor (doc) {
-    super('Record does not exist')
+    super('NotExists', 'Record does not exist')
     this.record = doc
   }
 }
 
 export class NoIndex extends DatastoreError {
   constructor (fieldName) {
-    super('No such index')
+    super('NoIndex', 'No such index')
     this.fieldName = fieldName
   }
 }

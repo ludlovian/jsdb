@@ -6,28 +6,28 @@ var Lock = _interopDefault(require('plock'));
 var fs = _interopDefault(require('fs'));
 
 class DatastoreError extends Error {
-  constructor (message) {
+  constructor (name, message) {
     super(message);
-    this.name = this.constructor.name;
+    this.name = name;
     Error.captureStackTrace(this, this.constructor);
   }
 }
 class KeyViolation extends DatastoreError {
   constructor (doc, fieldName) {
-    super('Key violation error');
+    super('KeyViolation', 'Key violation error');
     this.fieldName = fieldName;
     this.record = doc;
   }
 }
 class NotExists extends DatastoreError {
   constructor (doc) {
-    super('Record does not exist');
+    super('NotExists', 'Record does not exist');
     this.record = doc;
   }
 }
 class NoIndex extends DatastoreError {
   constructor (fieldName) {
-    super('No such index');
+    super('NoIndex', 'No such index');
     this.fieldName = fieldName;
   }
 }
