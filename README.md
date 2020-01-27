@@ -115,3 +115,25 @@ Sets auto-scheduled compaction
 
 Stops any scheduled compaction
 
+## Errors
+
+Three errors can be throw. The constructors are found as static properties on `Database`
+
+### NotExists
+
+Thrown when trying to update or delete a record that does not exist.
+
+- `.record` has the missing record
+
+### KeyViolation
+
+Thrown when an insert or update would violate a unique key.
+
+- `.fieldName` has the name of the index
+- `.record` has the offending record
+
+### NoIndex
+
+Thrown when a `find` or `findOne` asks to use an index which does not exist
+
+- `.fieldName` has the name of the missing index
