@@ -253,7 +253,10 @@ test('upsert', async t => {
 test('mulit-row ops', async t => {
   const db = new Database(t.context.file)
   await db.load()
-  let rows = [{ name: 'foo', num: 1 }, { name: 'bar', num: 2 }]
+  let rows = [
+    { name: 'foo', num: 1 },
+    { name: 'bar', num: 2 }
+  ]
   rows = await db.insert(rows)
   t.snapshot(rows)
 

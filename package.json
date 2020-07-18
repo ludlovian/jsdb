@@ -14,17 +14,17 @@
   "author": "",
   "license": "ISC",
   "devDependencies": {
-    "ava": "^2.4.0",
+    "ava": "^3.10.1",
     "esm": "^3.2.25",
-    "nyc": "^14.1.1",
-    "prettier-standard": "^15.0.1",
-    "rollup": "^1.25.1",
+    "nyc": "^15.1.0",
+    "prettier-standard": "^16.4.1",
+    "rollup": "^2.22.1",
     "rollup-plugin-cleanup": "^3.1.1",
     "rollup-plugin-node-resolve": "^5.2.0",
-    "rollup-plugin-terser": "^5.1.3",
-    "sirv-cli": "^0.4.4",
+    "rollup-plugin-terser": "^6.1.0",
+    "sirv-cli": "^1.0.3",
     "snazzy": "^8.0.0",
-    "standard": "^14.3.1"
+    "standard": "^14.3.4"
   },
   "dependencies": {
     "plock": "github:ludlovian/plock"
