@@ -295,3 +295,19 @@ test('many-to-many indexes', async t => {
   rows = await db.find('foo', 'bar')
   t.is(rows.length, 0)
 })
+
+test('frozen objects returned', async t => {
+  const db = new Database(t.context.file)
+  await db.load()
+  const rec1 = await db.insert({ _id: 1, foo: 'bar' })
+  t.true(Object.isFrozen(rec1))
+
+  let rec2 = await db.findOne('_id', 1)
+  t.is(rec1, rec2)
+
+  await db.reload()
+  rec2 = await db.findOne('_id', 1)
+  t.not(rec1, rec2)
+  t.deepEqual(rec1, rec2)
+  t.true(Object.isFrozen(rec2))
+})

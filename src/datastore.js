@@ -101,7 +101,7 @@ export default class Datastore {
 
   addDoc (doc, { mustExist = false, mustNotExist = false } = {}) {
     const { _id, ...rest } = doc
-    const olddoc = this.findOne('_id', _id)
+    const olddoc = this.indexes._id.findOne(_id)
     if (!olddoc && mustExist) throw new NotExists(doc)
     if (olddoc && mustNotExist) throw new KeyViolation(doc, '_id')
 
@@ -109,6 +109,7 @@ export default class Datastore {
       _id: _id || getId(doc, this.indexes._id.data),
       ...cleanObject(rest)
     }
+    Object.freeze(doc)
 
     const ixs = Object.values(this.indexes)
     try {
@@ -133,7 +134,7 @@ export default class Datastore {
 
   removeDoc (doc) {
     const ixs = Object.values(this.indexes)
-    const olddoc = this.findOne('_id', doc._id)
+    const olddoc = this.indexes._id.findOne(doc._id)
     if (!olddoc) throw new NotExists(doc)
     ixs.forEach(ix => ix.removeDoc(olddoc))
     return olddoc

@@ -17,6 +17,8 @@ Only for my own use. Don't use it. Use nedb instead
 
 NOTE: `findAll` has been removed
 
+When objects are stored in the DB, they are frozen
+
 ## API
 
 ### Database
@@ -54,7 +56,7 @@ removes the index
 
 `await db.insert(doc|docs)`
 
-Inserts a new doc or docs. Returns the actual stored doc/docs with `_id` if not given.
+Inserts a new doc or docs. Returns the stored doc/docs with `_id` if not given.
 
 ### .update
 
