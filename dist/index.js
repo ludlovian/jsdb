@@ -1,9 +1,12 @@
 'use strict';
 
-function _interopDefault (ex) { return (ex && (typeof ex === 'object') && 'default' in ex) ? ex['default'] : ex; }
+var Lock = require('plock');
+var fs = require('fs');
 
-var Lock = _interopDefault(require('plock'));
-var fs = _interopDefault(require('fs'));
+function _interopDefaultLegacy (e) { return e && typeof e === 'object' && 'default' in e ? e : { 'default': e }; }
+
+var Lock__default = /*#__PURE__*/_interopDefaultLegacy(Lock);
+var fs__default = /*#__PURE__*/_interopDefaultLegacy(fs);
 
 class DatastoreError extends Error {
   constructor (name, message) {
@@ -152,7 +155,7 @@ class UniqueIndex extends Index {
   }
 }
 
-const { readFile, appendFile, open, rename } = fs.promises;
+const { readFile, appendFile, open, rename } = fs__default['default'].promises;
 class Datastore {
   constructor (options) {
     this.options = {
@@ -330,7 +333,7 @@ class Database {
     if (typeof options === 'string') options = { filename: options };
     if (!options) throw new TypeError('No options given')
     this.loaded = false;
-    const lock = new Lock();
+    const lock = new Lock__default['default']();
     Object.defineProperties(this, {
       _ds: {
         value: new Datastore(options),
