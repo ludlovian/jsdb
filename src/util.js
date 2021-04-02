@@ -34,11 +34,13 @@ export function cleanObject (obj) {
   }, {})
 }
 
-const DATE_SENTINEL = '$jsdb$date$'
+const DATE_SENTINEL = '$date'
 
 export function stringify (obj) {
   return JSON.stringify(obj, function (k, v) {
-    return this[k] instanceof Date ? { [DATE_SENTINEL]: this[k].getTime() } : v
+    return this[k] instanceof Date
+      ? { [DATE_SENTINEL]: this[k].toISOString() }
+      : v
   })
 }
 
