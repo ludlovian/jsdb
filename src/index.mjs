@@ -1,6 +1,6 @@
 import Lock from 'plock'
-import { NotExists, KeyViolation, NoIndex } from './errors'
-import Datastore from './datastore'
+import { NotExists, KeyViolation, NoIndex } from './errors.mjs'
+import Datastore from './datastore.mjs'
 
 // Database
 //

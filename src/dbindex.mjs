@@ -1,5 +1,5 @@
-import { delve } from './util'
-import { KeyViolation } from './errors'
+import { delve } from './util.mjs'
+import { KeyViolation } from './errors.mjs'
 
 // Indexes are maps between values and docs
 //

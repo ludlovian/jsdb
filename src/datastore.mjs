@@ -1,8 +1,8 @@
 import fs from 'fs'
 
-import { NotExists, KeyViolation, NoIndex } from './errors'
-import { getId, cleanObject, parse, stringify, sortOn } from './util'
-import Index from './dbindex'
+import { NotExists, KeyViolation, NoIndex } from './errors.mjs'
+import { getId, cleanObject, parse, stringify, sortOn } from './util.mjs'
+import Index from './dbindex.mjs'
 
 const { readFile, appendFile, open, rename } = fs.promises
 
