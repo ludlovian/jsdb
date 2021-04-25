@@ -1,0 +1,2 @@
+{"_id":"foo","bar":"baz"}
+{"_id":"foo","bar":"quux"}

@@ -16,7 +16,7 @@ export function getId (row, existing) {
     const id = ((start + n) & 0x7fffffff).toString(36)
     if (!existing.has(id)) return id
   }
-  // istanbul ignore next
+  /* c8 ignore next */
   throw new Error('Could not generate unique id')
 }
 
@@ -60,7 +60,7 @@ export function sortOn (selector) {
   return (a, b) => {
     const x = selector(a)
     const y = selector(b)
-    // istanbul ignore next
+    /* c8 ignore next */
     return x < y ? -1 : x > y ? 1 : 0
   }
 }

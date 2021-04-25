@@ -1,0 +1,3 @@
+{"_id":"baz","age":3,"name":"bilbo"}
+{"_id":"foo","age":1,"name":"ping"}
+{"_id":"bar","age":2,"name":"pong"}

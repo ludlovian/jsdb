@@ -1,0 +1,2 @@
+{"_id":1,"foo":"bar"}
+{"$$addIndex":{"fieldName":"foo","sparse":true}}

@@ -9,21 +9,15 @@
     "clean": "rm -rf node_modules/.cache/ coverage/",
     "format": "prettier-standard {src,test}/*.{m,}js",
     "lint": "standard {src,test}/*.{m,}js | snazzy",
-    "test": "c8 ava",
+    "test": "c8 uvu",
     "coverage": "npm run test && c8 report --reporter=html && sirv coverage -H '0.0.0.0' -p 8000"
   },
   "author": "",
   "license": "ISC",
-  "devDependencies": {
-    "ava": "^3.15.0",
-    "esm": "^3.2.25"
-  },
   "dependencies": {
     "plock": "github:ludlovian/plock"
   },
-  "ava": {
-    "require": [
-      "esm"
-    ]
+  "devDependencies": {
+    "uvu": "^0.5.1"
   }
 }
