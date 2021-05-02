@@ -29,11 +29,7 @@ test.after.each(ctx => {
 })
 
 test('basic', async ctx => {
-  const db = new Database({
-    filename: ctx.file,
-    autoload: true
-  })
-  await db.load()
+  const db = new Database(ctx.file)
   await db.insert({ _id: 1, foo: 'bar', ignoreThis: undefined })
   await db.ensureIndex({ fieldName: 'foo', sparse: true })
 
@@ -41,12 +37,9 @@ test('basic', async ctx => {
 })
 
 test('delayed load', async ctx => {
-  const db = new Database({
-    filename: ctx.file
-  })
+  const db = new Database(ctx.file)
   db.insert({ _id: 1, foo: 'bar', ignoreThis: undefined })
   db.ensureIndex({ fieldName: 'foo', sparse: true })
-  db.load()
   await db.getAll()
 
   snapshot('delayed-load.txt', readFileSync(ctx.file, 'utf8'))
@@ -54,8 +47,8 @@ test('delayed load', async ctx => {
 
 test('full activity', async ctx => {
   const db = new Database(ctx.file)
-  const date = new Date(2018, 0, 19, 12, 34, 56)
   await db.load()
+  const date = new Date(2018, 0, 19, 12, 34, 56)
   await db.insert({ _id: 1, foo: 'bar', date })
   let r
   r = await db.find('_id', 1)
@@ -99,11 +92,7 @@ test('full activity', async ctx => {
 })
 
 test('generated id', async ctx => {
-  const db = new Database({
-    filename: ctx.file,
-    autoload: true
-  })
-  await db.load()
+  const db = new Database(ctx.file)
   await db.insert({ foo: 'bar' })
   snapshot('generated-id-1.txt', readFileSync(ctx.file, 'utf8'))
 
@@ -115,7 +104,6 @@ test('generated id', async ctx => {
 
 test('reload', async ctx => {
   const db = new Database(ctx.file)
-  await db.load()
   await db.insert({ _id: 1, foo: 'bar' })
 
   assert.is((await db.getAll()).length, 1)
@@ -128,7 +116,6 @@ test('reload', async ctx => {
 
 test('empty data', async ctx => {
   const db = new Database(ctx.file)
-  await db.load()
   assert.is(await db.findOne('_id', 1), undefined)
   assert.is(await db.find('_id', 1), undefined)
   await db.ensureIndex({ fieldName: 'foo' })
@@ -138,7 +125,6 @@ test('empty data', async ctx => {
 
 test('array indexes', async ctx => {
   const db = new Database(ctx.file)
-  await db.load()
   await db.ensureIndex({ fieldName: 'foo' })
   await db.insert({ _id: 1, foo: ['bar', 'baz'] })
   await db.insert({ _id: 2, foo: ['bar', 'bar'] })
@@ -154,7 +140,6 @@ test('array indexes', async ctx => {
 
 test('sparse indexes', async ctx => {
   const db = new Database(ctx.file)
-  await db.load()
   await db.ensureIndex({ fieldName: 'foo', unique: true, sparse: true })
   await db.insert({ _id: 1, hasFoo: false })
   await db.insert({ _id: 2, hasFoo: true, foo: 'bar' })
@@ -177,7 +162,6 @@ test('errors', async ctx => {
   assert.throws(() => new Database(), 'No options given')
 
   const db = new Database(ctx.file)
-  await db.load()
   await db
     .delete({ _id: 1 })
     .then(assert.unreachable, err => assert.instance(err, Database.NotExists))
@@ -221,11 +205,8 @@ test('errors', async ctx => {
 })
 
 test('auto compaction', async ctx => {
-  const db = new Database({
-    filename: ctx.file,
-    autocompact: 500
-  })
-  await db.load()
+  const db = new Database(ctx.file)
+  db.setAutoCompaction(500)
   await db.insert({ _id: 1 })
   await db.update({ _id: 1, foo: 'bar' })
   await delay(750)
@@ -236,7 +217,6 @@ test('auto compaction', async ctx => {
 
 test('sorted', async ctx => {
   const db = new Database(ctx.file)
-  await db.load()
   await db.insert({ _id: 'foo', age: 1, name: 'ping' })
   await db.insert({ _id: 'bar', age: 2, name: 'pong' })
   await db.insert({ _id: 'baz', age: 3, name: 'bilbo' })
@@ -255,7 +235,6 @@ test('sorted', async ctx => {
 
 test('upsert', async ctx => {
   const db = new Database(ctx.file)
-  await db.load()
   await db.upsert({ _id: 'foo', bar: 'baz' })
 
   snapshot('upsert-1.txt', readFileSync(ctx.file, 'utf8'))
@@ -267,7 +246,6 @@ test('upsert', async ctx => {
 
 test('mulit-row ops', async ctx => {
   const db = new Database(ctx.file)
-  await db.load()
   let rows = [
     { name: 'foo', num: 1 },
     { name: 'bar', num: 2 }
@@ -288,7 +266,6 @@ test('mulit-row ops', async ctx => {
 
 test('many-to-many indexes', async ctx => {
   const db = new Database(ctx.file)
-  await db.load()
   await db.insert([
     { foo: ['bar', 'baz'], quux: 10 },
     { foo: ['baz', 'bar'], quux: 20 }
@@ -312,7 +289,6 @@ test('many-to-many indexes', async ctx => {
 
 test('frozen objects returned', async ctx => {
   const db = new Database(ctx.file)
-  await db.load()
   const rec1 = await db.insert({ _id: 1, foo: 'bar' })
   assert.ok(Object.isFrozen(rec1))
 
@@ -328,13 +304,13 @@ test('frozen objects returned', async ctx => {
 
 test('access db when locked', async ctx => {
   const db1 = new Database(ctx.file)
-  await db1.load()
+  await db1.getAll()
 
   const db2 = new Database(ctx.file)
   await db2
-    .load()
+    .getAll()
     .then(assert.unreachable, err =>
-      assert.ok(/^Database locked:/.test(err.message))
+      assert.instance(err, Database.DatabaseLocked)
     )
 })
 

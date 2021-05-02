@@ -14,10 +14,10 @@
   },
   "author": "",
   "license": "ISC",
-  "dependencies": {
-    "plock": "github:ludlovian/plock"
-  },
   "devDependencies": {
     "uvu": "^0.5.1"
+  },
+  "dependencies": {
+    "plock": "github:ludlovian/plock#semver:^2.0.2"
   }
 }

@@ -2,6 +2,8 @@ import { basename } from 'path'
 import { symlink } from 'fs/promises'
 import { unlinkSync } from 'fs'
 
+import { DatabaseLocked } from './errors.mjs'
+
 const lockfiles = new Set()
 
 export async function lockFile (filename) {
@@ -13,7 +15,7 @@ export async function lockFile (filename) {
   } catch (err) {
     /* c8 ignore next */
     if (err.code !== 'EEXIST') throw err
-    throw new Error('Database locked: ' + filename)
+    throw new DatabaseLocked(filename)
   }
 }
 
@@ -31,4 +33,3 @@ process
   .on('exit', cleanup)
   .on('SIGINT', cleanup)
   .on('SIGTERM', cleanup)
-  .on('uncaughtException', cleanup)

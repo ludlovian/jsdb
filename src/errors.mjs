@@ -8,6 +8,13 @@ export class DatastoreError extends Error {
   }
 }
 
+export class DatabaseLocked extends DatastoreError {
+  constructor (filename) {
+    super('DatabaseLocked', 'Database is locked')
+    this.filename = filename
+  }
+}
+
 export class KeyViolation extends DatastoreError {
   constructor (doc, fieldName) {
     super('KeyViolation', 'Key violation error')

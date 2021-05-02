@@ -1,10 +1,11 @@
-import fs from 'fs'
+import { readFile, appendFile, open, rename } from 'fs/promises'
+
+import Lock from 'plock'
 
 import { NotExists, KeyViolation, NoIndex } from './errors.mjs'
 import { getId, cleanObject, parse, stringify, sortOn } from './util.mjs'
 import Index from './dbindex.mjs'
-
-const { readFile, appendFile, open, rename } = fs.promises
+import { lockFile } from './lockfile.mjs'
 
 export default class Datastore {
   constructor (options) {
@@ -19,13 +20,24 @@ export default class Datastore {
       ...options
     }
 
+    this.lock = new Lock()
+    this.lock.acquire()
+    this.loaded = false
     this.empty()
   }
 
-  empty () {
-    this.indexes = {
-      _id: Index.create({ fieldName: '_id', unique: true })
+  // API from Database class - mostly async
+
+  async exec (fn) {
+    const pItem = this.lock.exec(fn)
+    if (!this.loaded) {
+      this.loaded = true
+      await lockFile(this.options.filename)
+      await this.hydrate()
+      await this.rewrite()
+      this.lock.release()
     }
+    return await pItem
   }
 
   async ensureIndex (options) {
@@ -44,21 +56,6 @@ export default class Datastore {
     await this.append([{ [deleteIndex]: { fieldName } }])
   }
 
-  addIndex (options) {
-    const { fieldName } = options
-    const ix = Index.create(options)
-    this.allDocs().forEach(doc => ix.addDoc(doc))
-    this.indexes[fieldName] = ix
-  }
-
-  removeIndex (fieldName) {
-    delete this.indexes[fieldName]
-  }
-
-  hasIndex (fieldName) {
-    return Boolean(this.indexes[fieldName])
-  }
-
   find (fieldName, value) {
     if (!this.hasIndex(fieldName)) throw new NoIndex(fieldName)
     return this.indexes[fieldName].find(value)
@@ -67,6 +64,10 @@ export default class Datastore {
   findOne (fieldName, value) {
     if (!this.hasIndex(fieldName)) throw new NoIndex(fieldName)
     return this.indexes[fieldName].findOne(value)
+  }
+
+  allDocs () {
+    return Array.from(this.indexes._id.data.values())
   }
 
   async upsert (docOrDocs, options) {
@@ -97,51 +98,6 @@ export default class Datastore {
     docs = docs.map(doc => ({ [deleted]: doc }))
     await this.append(docs)
     return ret
-  }
-
-  addDoc (doc, { mustExist = false, mustNotExist = false } = {}) {
-    const { _id, ...rest } = doc
-    const olddoc = this.indexes._id.findOne(_id)
-    if (!olddoc && mustExist) throw new NotExists(doc)
-    if (olddoc && mustNotExist) throw new KeyViolation(doc, '_id')
-
-    doc = {
-      _id: _id || getId(doc, this.indexes._id.data),
-      ...cleanObject(rest)
-    }
-    Object.freeze(doc)
-
-    const ixs = Object.values(this.indexes)
-    try {
-      ixs.forEach(ix => {
-        if (olddoc) ix.removeDoc(olddoc)
-        ix.addDoc(doc)
-      })
-      return doc
-    } catch (err) {
-      // to rollback, we remove the new doc from each index. If there is
-      // an old one, then we remove that (just in case) and re-add
-      ixs.forEach(ix => {
-        ix.removeDoc(doc)
-        if (olddoc) {
-          ix.removeDoc(olddoc)
-          ix.addDoc(olddoc)
-        }
-      })
-      throw err
-    }
-  }
-
-  removeDoc (doc) {
-    const ixs = Object.values(this.indexes)
-    const olddoc = this.indexes._id.findOne(doc._id)
-    if (!olddoc) throw new NotExists(doc)
-    ixs.forEach(ix => ix.removeDoc(olddoc))
-    return olddoc
-  }
-
-  allDocs () {
-    return Array.from(this.indexes._id.data.values())
   }
 
   async hydrate () {
@@ -198,5 +154,69 @@ export default class Datastore {
     const { filename, serialize } = this.options
     const lines = docs.map(doc => serialize(doc) + '\n').join('')
     await appendFile(filename, lines, 'utf8')
+  }
+
+  // Internal methods - mostly sync
+
+  empty () {
+    this.indexes = {
+      _id: Index.create({ fieldName: '_id', unique: true })
+    }
+  }
+
+  addIndex (options) {
+    const { fieldName } = options
+    const ix = Index.create(options)
+    this.allDocs().forEach(doc => ix.addDoc(doc))
+    this.indexes[fieldName] = ix
+  }
+
+  removeIndex (fieldName) {
+    delete this.indexes[fieldName]
+  }
+
+  hasIndex (fieldName) {
+    return Boolean(this.indexes[fieldName])
+  }
+
+  addDoc (doc, { mustExist = false, mustNotExist = false } = {}) {
+    const { _id, ...rest } = doc
+    const olddoc = this.indexes._id.findOne(_id)
+    if (!olddoc && mustExist) throw new NotExists(doc)
+    if (olddoc && mustNotExist) throw new KeyViolation(doc, '_id')
+
+    doc = {
+      _id: _id || getId(doc, this.indexes._id.data),
+      ...cleanObject(rest)
+    }
+    Object.freeze(doc)
+
+    const ixs = Object.values(this.indexes)
+    try {
+      ixs.forEach(ix => {
+        if (olddoc) ix.removeDoc(olddoc)
+        ix.addDoc(doc)
+      })
+      return doc
+    } catch (err) {
+      // to rollback, we remove the new doc from each index. If there is
+      // an old one, then we remove that (just in case) and re-add
+      ixs.forEach(ix => {
+        ix.removeDoc(doc)
+        if (olddoc) {
+          ix.removeDoc(olddoc)
+          ix.addDoc(olddoc)
+        }
+      })
+      throw err
+    }
+  }
+
+  removeDoc (doc) {
+    const ixs = Object.values(this.indexes)
+    const olddoc = this.indexes._id.findOne(doc._id)
+    if (!olddoc) throw new NotExists(doc)
+    ixs.forEach(ix => ix.removeDoc(olddoc))
+    return olddoc
   }
 }
