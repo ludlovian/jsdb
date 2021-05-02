@@ -4,10 +4,11 @@ import snapshot from './helpers/snapshot.mjs'
 
 import { readFileSync, writeFileSync } from 'fs'
 import { execSync } from 'child_process'
+import { resolve } from 'path'
 
 import Database from '../src/index.mjs'
 
-const DIR = 'test/assets'
+const DIR = resolve('test/assets')
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 
 test.before(ctx => {
@@ -52,7 +53,7 @@ test('delayed load', async ctx => {
 })
 
 test('full activity', async ctx => {
-  let db = new Database(ctx.file)
+  const db = new Database(ctx.file)
   const date = new Date(2018, 0, 19, 12, 34, 56)
   await db.load()
   await db.insert({ _id: 1, foo: 'bar', date })
@@ -86,8 +87,7 @@ test('full activity', async ctx => {
 
   snapshot('full-activity-1.txt', readFileSync(ctx.file, 'utf8'))
 
-  db = new Database(ctx.file)
-  await db.load()
+  await db.reload()
 
   await db.ensureIndex({ fieldName: 'foo', sparse: true })
   await db.compact()
@@ -324,6 +324,18 @@ test('frozen objects returned', async ctx => {
   assert.is.not(rec1, rec2)
   assert.equal(rec1, rec2)
   assert.ok(Object.isFrozen(rec2))
+})
+
+test('access db when locked', async ctx => {
+  const db1 = new Database(ctx.file)
+  await db1.load()
+
+  const db2 = new Database(ctx.file)
+  await db2
+    .load()
+    .then(assert.unreachable, err =>
+      assert.ok(/^Database locked:/.test(err.message))
+    )
 })
 
 test.run()

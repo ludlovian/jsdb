@@ -1,6 +1,11 @@
+import { homedir } from 'os'
+import { resolve, join } from 'path'
+
 import Lock from 'plock'
+
 import { NotExists, KeyViolation, NoIndex } from './errors.mjs'
 import Datastore from './datastore.mjs'
+import { lockFile } from './lockfile.mjs'
 
 // Database
 //
@@ -11,12 +16,13 @@ export default class Database {
     if (typeof options === 'string') options = { filename: options }
     if (!options) throw new TypeError('No options given')
 
+    this.filename = resolve(join(homedir(), '.databases'), options.filename)
     this.loaded = false
     const lock = new Lock()
 
     Object.defineProperties(this, {
       _ds: {
-        value: new Datastore(options),
+        value: new Datastore({ ...options, filename: this.filename }),
         configurable: true
       },
       _lock: {
@@ -42,6 +48,7 @@ export default class Database {
   async load () {
     if (this.loaded) return
     this.loaded = true
+    await lockFile(this.filename)
     await this._ds.hydrate()
     await this._ds.rewrite()
     this._lock.release()
