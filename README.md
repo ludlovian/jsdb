@@ -15,27 +15,17 @@ Inspired by the execellent [nedb](https://www.npmjs.com/package/nedb) module, bu
 
 Only for my own use. Don't use it. Use nedb instead
 
-NOTE: `findAll` has been removed
-
 When objects are stored in the DB, they are frozen
 
 ## API
 
 ### Database
 
-`db = new Database(filename | options)`
+`db = new Database(filename)`
 
-Where options are
+There is no longer any separate `.load` step. Data is loaded on first access.
+`.load` remains for compatibilty, but is a synonym for `.reload` which forces a re-read.
 
-- `filename` - the filename
-- `autoload` - autoload it
-- `autocompact` - auto compaction interval
-
-### .load
-
-`await db.load()`
-
-Reads the file into memory and prepares indexes. All other IO is queued until this completes.
 
 ### .ensureIndex
 
@@ -107,7 +97,7 @@ Options:
 
 ### .setAutoCompaction
 
-`db.setAutoCompaction(30 * 60 * 1000) // 30 minutes`
+`db.setAutoCompaction(30 * 60 * 1000, compactOptions) // 30 minutes`
 
 Sets auto-scheduled compaction
 
@@ -139,3 +129,9 @@ Thrown when an insert or update would violate a unique key.
 Thrown when a `find` or `findOne` asks to use an index which does not exist
 
 - `.fieldName` has the name of the missing index
+
+### DatabaseLocked
+
+Thrown when a lockfile already exists for this database
+
+- `.filename` is the offending database
