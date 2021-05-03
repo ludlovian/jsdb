@@ -124,7 +124,7 @@ export default class Datastore {
     }
   }
 
-  async rewrite ({ sorted = false } = {}) {
+  async rewrite ({ sorted = false, sortBy } = {}) {
     const {
       filename,
       serialize,
@@ -136,7 +136,10 @@ export default class Datastore {
       if (typeof sorted !== 'string' && typeof sorted !== 'function') {
         sorted = '_id'
       }
-      docs.sort(sortOn(sorted))
+      sortBy = sortOn(sorted)
+    }
+    if (sortBy && typeof sortBy === 'function') {
+      docs.sort(sortBy)
     }
     const lines = Object.values(this.indexes)
       .filter(ix => ix.options.fieldName !== '_id')
