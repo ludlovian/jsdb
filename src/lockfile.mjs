@@ -29,7 +29,11 @@ function cleanup () {
   })
 }
 
+function cleanAndGo () {
+  cleanup
+  setImmediate(() => process.exit(2))
+}
+
 process
   .on('exit', cleanup)
-  .on('SIGINT', cleanup)
-  .on('SIGTERM', cleanup)
+  .on('SIGINT', cleanAndGo)
