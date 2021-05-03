@@ -47,7 +47,7 @@ export function stringify (obj) {
 export function parse (s) {
   return JSON.parse(s, function (k, v) {
     if (k === DATE_SENTINEL) return new Date(v)
-    if (typeof v === 'object' && DATE_SENTINEL in v) return v[DATE_SENTINEL]
+    if (v && typeof v === 'object' && DATE_SENTINEL in v) return v[DATE_SENTINEL]
     return v
   })
 }
