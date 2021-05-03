@@ -92,8 +92,10 @@ comapcts and rewrites the database.
 Options:
 
 `sorted` sorts the records (default: false)
+`sortBy` a sort function with signature `(a,b) => -1|0|+1`
 
-`sorted` can be a field name, a selector function, or if truthy then the same as if `_id` was given
+`sorted` can be a field name, a selector function, or if truthy then the same as if `_id` was given.
+Or you can provide the more complex `sortBy` function directly.
 
 ### .setAutoCompaction
 
