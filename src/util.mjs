@@ -34,20 +34,18 @@ export function cleanObject (obj) {
   }, {})
 }
 
-const DATE_SENTINEL = '$date'
+const DATE = '$date'
 
 export function stringify (obj) {
   return JSON.stringify(obj, function (k, v) {
-    return this[k] instanceof Date
-      ? { [DATE_SENTINEL]: this[k].toISOString() }
-      : v
+    return this[k] instanceof Date ? { [DATE]: this[k].toISOString() } : v
   })
 }
 
 export function parse (s) {
   return JSON.parse(s, function (k, v) {
-    if (k === DATE_SENTINEL) return new Date(v)
-    if (v && typeof v === 'object' && DATE_SENTINEL in v) return v[DATE_SENTINEL]
+    if (k === DATE) return new Date(v)
+    if (v && typeof v === 'object' && DATE in v) return v[DATE]
     return v
   })
 }
