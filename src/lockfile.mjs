@@ -29,11 +29,10 @@ function cleanup () {
   })
 }
 
+/* c8 ignore next 4 */
 function cleanAndGo () {
-  cleanup
+  cleanup()
   setImmediate(() => process.exit(2))
 }
 
-process
-  .on('exit', cleanup)
-  .on('SIGINT', cleanAndGo)
+process.on('exit', cleanup).on('SIGINT', cleanAndGo)
