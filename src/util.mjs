@@ -1,14 +1,3 @@
-'use strict'
-
-export function delve (obj, key) {
-  let p = 0
-  key = key.split('.')
-  while (obj && p < key.length) {
-    obj = obj[key[p++]]
-  }
-  return obj === undefined || p < key.length ? undefined : obj
-}
-
 export function getId (row, existing) {
   // generate a repeatable for this row, avoiding conflicts with the other rows
   const start = hashString(stringify(row))
@@ -21,7 +10,7 @@ export function getId (row, existing) {
 }
 
 function hashString (string) {
-  return Array.from(string).reduce(
+  return [...string].reduce(
     (h, ch) => ((h << 5) - h + ch.charCodeAt(0)) & 0xffffffff,
     0
   )

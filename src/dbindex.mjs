@@ -1,4 +1,3 @@
-import { delve } from './util.mjs'
 import { KeyViolation } from './errors.mjs'
 
 // Indexes are maps between values and docs
@@ -28,7 +27,7 @@ export default class Index {
   }
 
   addDoc (doc) {
-    const value = delve(doc, this.options.fieldName)
+    const value = doc[this.options.fieldName]
     if (Array.isArray(value)) {
       value.forEach(v => this.linkValueToDoc(v, doc))
     } else {
@@ -37,7 +36,7 @@ export default class Index {
   }
 
   removeDoc (doc) {
-    const value = delve(doc, this.options.fieldName)
+    const value = doc[this.options.fieldName]
     if (Array.isArray(value)) {
       value.forEach(v => this.unlinkValueFromDoc(v, doc))
     } else {
