@@ -5,6 +5,7 @@ import snapshot from './helpers/snapshot.mjs'
 import { readFileSync, writeFileSync } from 'fs'
 import { execSync } from 'child_process'
 import { resolve } from 'path'
+import sortBy from 'sortby'
 
 import Database from '../src/index.mjs'
 
@@ -223,13 +224,13 @@ test('sorted', async ctx => {
 
   snapshot('sorted-none.txt', readFileSync(ctx.file, 'utf8'))
 
-  await db.compact({ sorted: true })
+  await db.compact({ sortBy: sortBy('_id') })
   snapshot('sorted-id.txt', readFileSync(ctx.file, 'utf8'))
 
-  await db.compact({ sorted: 'age' })
+  await db.compact({ sortBy: sortBy('age') })
   snapshot('sorted-age.txt', readFileSync(ctx.file, 'utf8'))
 
-  await db.compact({ sorted: x => x.name })
+  await db.compact({ sortBy: sortBy(r => r.name) })
   snapshot('sorted-name.txt', readFileSync(ctx.file, 'utf8'))
 })
 

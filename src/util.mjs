@@ -49,16 +49,3 @@ export function parse (s) {
     return v
   })
 }
-
-export function sortOn (selector) {
-  if (typeof selector !== 'function') {
-    const key = selector
-    selector = x => delve(x, key)
-  }
-  return (a, b) => {
-    const x = selector(a)
-    const y = selector(b)
-    /* c8 ignore next */
-    return x < y ? -1 : x > y ? 1 : 0
-  }
-}

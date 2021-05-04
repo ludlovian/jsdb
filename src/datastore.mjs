@@ -3,7 +3,7 @@ import { readFile, appendFile, open, rename } from 'fs/promises'
 import Lock from 'plock'
 
 import { NotExists, KeyViolation, NoIndex } from './errors.mjs'
-import { getId, cleanObject, parse, stringify, sortOn } from './util.mjs'
+import { getId, cleanObject, parse, stringify } from './util.mjs'
 import Index from './dbindex.mjs'
 import { lockFile } from './lockfile.mjs'
 
@@ -124,7 +124,7 @@ export default class Datastore {
     }
   }
 
-  async rewrite ({ sorted = false, sortBy } = {}) {
+  async rewrite ({ sortBy } = {}) {
     const {
       filename,
       serialize,
@@ -132,15 +132,7 @@ export default class Datastore {
     } = this.options
     const temp = filename + '~'
     const docs = this.allDocs()
-    if (sorted) {
-      if (typeof sorted !== 'string' && typeof sorted !== 'function') {
-        sorted = '_id'
-      }
-      sortBy = sortOn(sorted)
-    }
-    if (sortBy && typeof sortBy === 'function') {
-      docs.sort(sortBy)
-    }
+    if (sortBy && typeof sortBy === 'function') docs.sort(sortBy)
     const lines = Object.values(this.indexes)
       .filter(ix => ix.options.fieldName !== '_id')
       .map(ix => ({ [addIndex]: ix.options }))
