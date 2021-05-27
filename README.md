@@ -23,9 +23,6 @@ When objects are stored in the DB, they are frozen
 
 `db = new Database(filename)`
 
-There is no longer any separate `.load` step. Data is loaded on first access.
-`.load` remains for compatibilty, but is a synonym for `.reload` which forces a re-read.
-
 
 ### .ensureIndex
 
@@ -91,11 +88,8 @@ comapcts and rewrites the database.
 
 Options:
 
-`sorted` sorts the records (default: false)
 `sortBy` a sort function with signature `(a,b) => -1|0|+1`
 
-`sorted` can be a field name, a selector function, or if truthy then the same as if `_id` was given.
-Or you can provide the more complex `sortBy` function directly.
 
 ### .setAutoCompaction
 
@@ -111,7 +105,7 @@ Stops any scheduled compaction
 
 ## Errors
 
-Three errors can be throw. The constructors are found as static properties on `Database`
+Four errors can be thrown. The constructors are found as static properties on `Database`
 
 ### NotExists
 
