@@ -1,6 +1,6 @@
 import { readFile, appendFile, open, rename } from 'fs/promises'
 
-import Lock from 'plock'
+import Serial from 'pixutil/serial'
 
 import { NotExists, KeyViolation, NoIndex } from './errors.mjs'
 import { getId, cleanObject, parse, stringify } from './util.mjs'
@@ -20,24 +20,23 @@ export default class Datastore {
       ...options
     }
 
-    this.lock = new Lock()
-    this.lock.acquire()
+    const serial = new Serial()
+    this._exec = serial.exec.bind(serial)
     this.loaded = false
     this.empty()
   }
 
   // API from Database class - mostly async
 
-  async exec (fn) {
-    const pItem = this.lock.exec(fn)
-    if (!this.loaded) {
-      this.loaded = true
+  exec (fn) {
+    if (this.loaded) return this._exec(fn)
+    this.loaded = true
+    return this._exec(async () => {
       await lockFile(this.options.filename)
       await this.hydrate()
       await this.rewrite()
-      this.lock.release()
-    }
-    return await pItem
+      return await fn()
+    })
   }
 
   async ensureIndex (options) {

@@ -19,6 +19,6 @@
     "uvu": "^0.5.1"
   },
   "dependencies": {
-    "plock": "github:ludlovian/plock#semver:^2.0.2"
+    "pixutil": "github:ludlovian/pixutil"
   }
 }
