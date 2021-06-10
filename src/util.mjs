@@ -17,11 +17,12 @@ function hashString (string) {
 }
 
 export function cleanObject (obj) {
-  return Object.entries(obj).reduce((o, [k, v]) => {
-    if (v !== undefined) o[k] = v
-    return o
-  }, {})
+  return Object.fromEntries(
+    Object.entries(obj).filter(([, v]) => v !== undefined)
+  )
 }
+
+export const SEP = String.fromCharCode(31)
 
 const DATE = '$date'
 

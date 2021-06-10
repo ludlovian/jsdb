@@ -1,1 +1,2 @@
+{"$$addIndex":{"name":"primary","fields":["_id"],"unique":true}}
 {"_id":"foo","bar":"baz"}

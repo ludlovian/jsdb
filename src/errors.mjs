@@ -16,9 +16,9 @@ export class DatabaseLocked extends DatastoreError {
 }
 
 export class KeyViolation extends DatastoreError {
-  constructor (doc, fieldName) {
+  constructor (doc, name) {
     super('KeyViolation', 'Key violation error')
-    this.fieldName = fieldName
+    this.name = name
     this.record = doc
   }
 }
@@ -31,8 +31,8 @@ export class NotExists extends DatastoreError {
 }
 
 export class NoIndex extends DatastoreError {
-  constructor (fieldName) {
+  constructor (name) {
     super('NoIndex', 'No such index')
-    this.fieldName = fieldName
+    this.name = name
   }
 }

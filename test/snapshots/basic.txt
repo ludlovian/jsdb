@@ -1,2 +1,3 @@
+{"$$addIndex":{"name":"primary","fields":["_id"],"unique":true}}
 {"_id":1,"foo":"bar"}
-{"$$addIndex":{"fieldName":"foo","sparse":true}}
+{"$$addIndex":{"name":"foo","fields":["foo"],"unique":false}}

@@ -1,4 +1,5 @@
-{"_id":"k75p8g","name":"foo","num":1}
-{"_id":"r41zcc","name":"bar","num":2}
-{"_id":"k75p8g","name":"foo","num":10}
-{"_id":"r41zcc","name":"bar","num":20}
+{"$$addIndex":{"name":"primary","fields":["_id"],"unique":true}}
+{"_id":"kkvuxt","name":"foo","num":1}
+{"_id":"rhs51p","name":"bar","num":2}
+{"_id":"kkvuxt","name":"foo","num":10}
+{"_id":"rhs51p","name":"bar","num":20}

@@ -1,2 +1,3 @@
-{"_id":"czxbr7","foo":"bar"}
-{"_id":"czxbr8","foo":"bar"}
+{"$$addIndex":{"name":"primary","fields":["_id"],"unique":true}}
+{"_id":"r4v5tu","foo":"bar"}
+{"_id":"r4v5tv","foo":"bar"}

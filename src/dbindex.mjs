@@ -1,85 +1,76 @@
+import { SEP } from './util.mjs'
 import { KeyViolation } from './errors.mjs'
 
-// Indexes are maps between values and docs
-//
-// Generic index is many-to-many
-// Unique index is many values to single doc
-// Sparse indexes do not index null-ish values
-//
 export default class Index {
   static create (options) {
-    return new (options.unique ? UniqueIndex : Index)(options)
+    if (options.name === 'primary') options.unique = true
+    const Factory = options.unique ? UniqueIndex : Index
+    return new Factory(options)
   }
 
   constructor (options) {
-    this.options = options
+    const { name, fields, unique } = options
+    Object.assign(this, { name, fields, unique })
+    this.function = row => fields.map(k => row[k]).join(SEP)
     this.data = new Map()
   }
 
-  find (value) {
-    const docs = this.data.get(value)
+  get options () {
+    return { name: this.name, fields: this.fields, unique: !!this.unique }
+  }
+
+  locate (data) {
+    if (typeof data !== 'object' && this.fields.length === 1) {
+      return this.data.get(String(data))
+    } else {
+      return this.data.get(this.function(data))
+    }
+  }
+
+  find (data) {
+    const docs = this.locate(data)
     return docs ? Array.from(docs) : []
   }
 
-  findOne (value) {
-    const docs = this.data.get(value)
+  findOne (data) {
+    const docs = this.locate(data)
     return docs ? docs.values().next().value : undefined
   }
 
   addDoc (doc) {
-    const value = doc[this.options.fieldName]
-    if (Array.isArray(value)) {
-      value.forEach(v => this.linkValueToDoc(v, doc))
-    } else {
-      this.linkValueToDoc(value, doc)
-    }
+    const key = this.function(doc)
+    const docs = this.data.get(key)
+    if (docs) docs.add(doc)
+    else this.data.set(key, new Set([doc]))
   }
 
   removeDoc (doc) {
-    const value = doc[this.options.fieldName]
-    if (Array.isArray(value)) {
-      value.forEach(v => this.unlinkValueFromDoc(v, doc))
-    } else {
-      this.unlinkValueFromDoc(value, doc)
-    }
-  }
-
-  linkValueToDoc (value, doc) {
-    if (value == null && this.options.sparse) return
-    const docs = this.data.get(value)
-    if (docs) {
-      docs.add(doc)
-    } else {
-      this.data.set(value, new Set([doc]))
-    }
-  }
-
-  unlinkValueFromDoc (value, doc) {
-    const docs = this.data.get(value)
+    const key = this.function(doc)
+    const docs = this.data.get(key)
+    /* c8 ignore next */
     if (!docs) return
     docs.delete(doc)
-    if (!docs.size) this.data.delete(value)
+    if (!docs.size) this.data.delete(key)
   }
 }
 
 class UniqueIndex extends Index {
-  findOne (value) {
-    return this.data.get(value)
+  findOne (data) {
+    return this.locate(data)
   }
 
-  find (value) {
-    return this.findOne(value)
+  find (data) {
+    return this.findOne(data)
   }
 
-  linkValueToDoc (value, doc) {
-    if (value == null && this.options.sparse) return
-    if (this.data.has(value)) {
-      throw new KeyViolation(doc, this.options.fieldName)
-    }
-    this.data.set(value, doc)
+  addDoc (doc) {
+    const key = this.function(doc)
+    if (this.data.has(key)) throw new KeyViolation(doc, this.name)
+    this.data.set(key, doc)
   }
 
-  unlinkValueFromDoc (value, doc) {
-    if (this.data.get(value) === doc) this.data.delete(value)
+  removeDoc (doc) {
+    const key = this.function(doc)
+    if (this.data.get(key) === doc) this.data.delete(key)
   }
 }

@@ -14,7 +14,7 @@ export default class Database {
       throw new TypeError('Bad filename')
     }
     filename = resolve(join(homedir(), '.databases'), filename)
-    const ds = new Datastore({ filename })
+    const ds = new Datastore(filename)
     Object.defineProperties(this, {
       _ds: { value: ds, configurable: true },
       _autoCompaction: { configurable: true, writable: true }

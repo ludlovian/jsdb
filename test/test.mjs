@@ -32,18 +32,9 @@ test.after.each(ctx => {
 test('basic', async ctx => {
   const db = new Database(ctx.file)
   await db.insert({ _id: 1, foo: 'bar', ignoreThis: undefined })
-  await db.ensureIndex({ fieldName: 'foo', sparse: true })
+  await db.ensureIndex({ name: 'foo', field: 'foo' })
 
   snapshot('basic.txt', readFileSync(ctx.file, 'utf8'))
-})
-
-test('delayed load', async ctx => {
-  const db = new Database(ctx.file)
-  db.insert({ _id: 1, foo: 'bar', ignoreThis: undefined })
-  db.ensureIndex({ fieldName: 'foo', sparse: true })
-  await db.getAll()
-
-  snapshot('delayed-load.txt', readFileSync(ctx.file, 'utf8'))
 })
 
 test('full activity', async ctx => {
@@ -52,14 +43,14 @@ test('full activity', async ctx => {
   const date = new Date(2018, 0, 19, 12, 34, 56)
   await db.insert({ _id: 1, foo: 'bar', date })
   let r
-  r = await db.find('_id', 1)
+  r = await db.find('primary', 1)
   assert.is(r.foo, 'bar')
-  r = await db.findOne('_id', 1)
+  r = await db.findOne('primary', 1)
   assert.is(r.foo, 'bar')
-  assert.is(r.date, date)
+  assert.is(+r.date, +date)
 
-  await db.ensureIndex({ fieldName: 'foo', sparse: true })
-  await db.ensureIndex({ fieldName: 'foo', sparse: true })
+  await db.ensureIndex({ name: 'foo', field: 'foo' })
+  await db.ensureIndex({ name: 'foo', fields: ['foo'] })
   r = await db.find('foo', 'bar')
   assert.is(r[0]._id, 1)
 
@@ -77,16 +68,16 @@ test('full activity', async ctx => {
   await db.delete({ _id: 1 })
 
   await db.deleteIndex('foo')
-  await db.deleteIndex('_id')
+  await db.deleteIndex('primary')
 
   snapshot('full-activity-1.txt', readFileSync(ctx.file, 'utf8'))
 
   await db.reload()
 
-  await db.ensureIndex({ fieldName: 'foo', sparse: true })
+  await db.ensureIndex({ name: 'foo', field: 'foo' })
   await db.compact()
 
-  await db.insert({ noId: true })
+  await db.insert({ _id: null, noId: true })
   assert.is((await db.getAll()).length, 2)
 
   snapshot('full-activity-2.txt', readFileSync(ctx.file, 'utf8'))
@@ -94,10 +85,10 @@ test('full activity', async ctx => {
 
 test('generated id', async ctx => {
   const db = new Database(ctx.file)
-  await db.insert({ foo: 'bar' })
+  await db.insert({ _id: null, foo: 'bar' })
   snapshot('generated-id-1.txt', readFileSync(ctx.file, 'utf8'))
 
-  await db.insert({ foo: 'bar' })
+  await db.insert({ _id: null, foo: 'bar' })
   snapshot('generated-id-2.txt', readFileSync(ctx.file, 'utf8'))
 
   assert.is((await db.getAll()).length, 2)
@@ -117,50 +108,15 @@ test('reload', async ctx => {
 
 test('empty data', async ctx => {
   const db = new Database(ctx.file)
-  assert.is(await db.findOne('_id', 1), undefined)
-  assert.is(await db.find('_id', 1), undefined)
-  await db.ensureIndex({ fieldName: 'foo' })
+  assert.is(await db.findOne('primary', 1), undefined)
+  assert.is(await db.find('primary', 1), undefined)
+  await db.ensureIndex({ name: 'foo', field: 'foo' })
   assert.is(await db.findOne('foo', 1), undefined)
   assert.equal(await db.find('foo', 1), [])
 })
 
-test('array indexes', async ctx => {
-  const db = new Database(ctx.file)
-  await db.ensureIndex({ fieldName: 'foo' })
-  await db.insert({ _id: 1, foo: ['bar', 'baz'] })
-  await db.insert({ _id: 2, foo: ['bar', 'bar'] })
-  let r = await db.find('foo', 'bar')
-  assert.is(r.length, 2)
-  r = await db.find('foo', 'baz')
-  assert.is(r.length, 1)
-
-  await db.update({ _id: 1, foo: 'bar' })
-  r = await db.find('foo', 'baz')
-  assert.is(r.length, 0)
-})
-
-test('sparse indexes', async ctx => {
-  const db = new Database(ctx.file)
-  await db.ensureIndex({ fieldName: 'foo', unique: true, sparse: true })
-  await db.insert({ _id: 1, hasFoo: false })
-  await db.insert({ _id: 2, hasFoo: true, foo: 'bar' })
-  await db.insert({ _id: 3, hasFoo: false })
-  await db.insert({ _id: 4, hasFoo: true, foo: 'baz' })
-
-  const p2 = db.find('foo', 'bar')
-  const p4 = db.find('foo', 'baz')
-  assert.is((await p2)._id, 2)
-  assert.is((await p4)._id, 4)
-
-  await db
-    .insert({ foo: 'bar' })
-    .then(assert.unreachable, err =>
-      assert.instance(err, Database.KeyViolation)
-    )
-})
-
 test('errors', async ctx => {
-  assert.throws(() => new Database(), 'No options given')
+  assert.throws(() => new Database(), 'No filename given')
 
   const db = new Database(ctx.file)
   await db
@@ -177,7 +133,7 @@ test('errors', async ctx => {
       assert.instance(err, Database.KeyViolation)
     )
 
-  await db.ensureIndex({ fieldName: 'foo', unique: true })
+  await db.ensureIndex({ name: 'foo', field: 'foo', unique: true })
   await db.insert({ _id: 1, foo: 'bar' })
   await db
     .insert({ _id: 2, foo: 'bar' })
@@ -248,8 +204,8 @@ test('upsert', async ctx => {
 test('mulit-row ops', async ctx => {
   const db = new Database(ctx.file)
   let rows = [
-    { name: 'foo', num: 1 },
-    { name: 'bar', num: 2 }
+    { _id: null, name: 'foo', num: 1 },
+    { _id: null, name: 'bar', num: 2 }
   ]
   rows = await db.insert(rows)
   snapshot('multirow-insert.json', rows)
@@ -265,39 +221,16 @@ test('mulit-row ops', async ctx => {
   assert.is(0, rows.length)
 })
 
-test('many-to-many indexes', async ctx => {
-  const db = new Database(ctx.file)
-  await db.insert([
-    { foo: ['bar', 'baz'], quux: 10 },
-    { foo: ['baz', 'bar'], quux: 20 }
-  ])
-  await db.ensureIndex({ fieldName: 'foo' })
-
-  let rows = await db.find('foo', 'bar')
-  assert.is(rows.length, 2)
-  assert.equal(rows.map(row => row.quux).sort(), [10, 20])
-
-  rows = await db.find('foo', 'baz')
-  assert.is(rows.length, 2)
-  assert.equal(rows.map(row => row.quux).sort(), [10, 20])
-
-  await db.delete(rows[0])
-  await db.delete(rows[1])
-
-  rows = await db.find('foo', 'bar')
-  assert.is(rows.length, 0)
-})
-
 test('frozen objects returned', async ctx => {
   const db = new Database(ctx.file)
   const rec1 = await db.insert({ _id: 1, foo: 'bar' })
   assert.ok(Object.isFrozen(rec1))
 
-  let rec2 = await db.findOne('_id', 1)
+  let rec2 = await db.findOne('primary', 1)
   assert.is(rec1, rec2)
 
   await db.reload()
-  rec2 = await db.findOne('_id', 1)
+  rec2 = await db.findOne('primary', 1)
   assert.is.not(rec1, rec2)
   assert.equal(rec1, rec2)
   assert.ok(Object.isFrozen(rec2))
@@ -313,6 +246,14 @@ test('access db when locked', async ctx => {
     .then(assert.unreachable, err =>
       assert.instance(err, Database.DatabaseLocked)
     )
+})
+
+test('change primary key', async ctx => {
+  const db = new Database(ctx.file)
+  await db.insert({ _id: 1, name: 'foo' })
+  await db.ensureIndex({ name: 'primary', fields: ['foo']})
+  await db.update({ _id: undefined, name: 'foo' })
+  snapshot('change-primary-key.txt', readFileSync(ctx.file, 'utf8'))
 })
 
 test.run()
