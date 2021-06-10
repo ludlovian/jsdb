@@ -1,6 +1,6 @@
 {
   "name": "jsdb",
-  "version": "3.3.0",
+  "version": "4.0.0",
   "description": "Simple NOSQL file-based database",
   "main": "src/index.mjs",
   "module": "src/index.mjs",
