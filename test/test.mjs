@@ -259,4 +259,17 @@ test('change primary key', async ctx => {
   assert.is(row.bar, 'baz')
 })
 
+test('cope with old style indexes', async ctx => {
+  const data =
+    '{"$$addIndex":{"fieldName":"foo"}}\n' + '{"_id":1,"foo":"bar"}\n'
+  writeFileSync(ctx.file, data)
+  const db = new Database(ctx.file)
+  let rec = await db.findOne('_id', 1)
+  assert.is(rec.foo, 'bar')
+  rec = await db.find('_id', 1)
+  assert.is(rec.foo, 'bar')
+  rec = await db.findOne('foo', 'bar')
+  assert.is(rec._id, 1)
+})
+
 test.run()

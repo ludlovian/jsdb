@@ -54,11 +54,13 @@ export default class Datastore {
   }
 
   find (name, data) {
+    if (name === '_id' && !this.indexes._id) name = 'primary'
     if (!this.indexes[name]) throw new NoIndex(name)
     return this.indexes[name].find(data)
   }
 
   findOne (name, data) {
+    if (name === '_id' && !this.indexes._id) name = 'primary'
     if (!this.indexes[name]) throw new NoIndex(name)
     return this.indexes[name].findOne(data)
   }
@@ -127,6 +129,10 @@ export default class Datastore {
   }
 
   addIndex (options) {
+    if (options.fieldName) {
+      options.name = options.fieldName
+      options.fields = [options.fieldName]
+    }
     const { name } = options
     const ix = Index.create(options)
     this.allDocs().forEach(doc => ix.addDoc(doc))
