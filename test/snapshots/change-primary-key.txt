@@ -1,5 +1,4 @@
 {"$$addIndex":{"name":"primary","fields":["_id"],"unique":true}}
-{"_id":1,"name":"foo"}
-{"$$deleteIndex":"primary"}
-{"$$addIndex":{"name":"primary","fields":["foo"],"unique":true}}
-{"name":"foo"}
+{"_id":1,"name":"foo","bar":"baz"}
+{"$$addIndex":{"name":"primary","fields":["name"],"unique":true}}
+{"name":"foo","bar":"baz"}

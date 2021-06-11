@@ -43,11 +43,7 @@ export default class Datastore {
     const existing = this.indexes[name]
     if (existing && existing.fields.join(SEP) === fields.join(SEP)) return
     const ix = this.addIndex(options)
-    const rows = [
-      existing && { [DELETE_INDEX]: name },
-      { [ADD_INDEX]: ix.options }
-    ].filter(Boolean)
-    await this.append(rows)
+    await this.append({ [ADD_INDEX]: ix.options })
   }
 
   async deleteIndex (name) {

@@ -250,10 +250,13 @@ test('access db when locked', async ctx => {
 
 test('change primary key', async ctx => {
   const db = new Database(ctx.file)
-  await db.insert({ _id: 1, name: 'foo' })
-  await db.ensureIndex({ name: 'primary', fields: ['foo']})
-  await db.update({ _id: undefined, name: 'foo' })
+  await db.insert({ _id: 1, name: 'foo', bar: 'baz' })
+  await db.ensureIndex({ name: 'primary', fields: ['name'] })
+  await db.update({ _id: undefined, name: 'foo', bar: 'baz' })
   snapshot('change-primary-key.txt', readFileSync(ctx.file, 'utf8'))
+  await db.reload()
+  const row = await db.find('primary', 'foo')
+  assert.is(row.bar, 'baz')
 })
 
 test.run()
